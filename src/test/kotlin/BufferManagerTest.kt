@@ -1,4 +1,4 @@
-import pf.BufferManager
+import pagedFile.BufferManager
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -11,7 +11,7 @@ internal class BufferManagerTest {
         bufferManager.createFile(filename)
         val testFile = bufferManager.openFile(filename)
         val bufferWrite = bufferManager.readPage(testFile, 1)
-        for (i in bufferWrite.indices) {
+        for (i in 0 until 16) {
             bufferWrite[i] = ('a' + i).code.toByte()
         }
         bufferManager.markDirty(testFile, 1)
@@ -19,7 +19,7 @@ internal class BufferManagerTest {
 
         val testFileAgain = bufferManager.openFile(filename)
         val bufferRead = bufferManager.readPage(testFileAgain, 1)
-        for (i in bufferRead.indices) {
+        for (i in 0 until 16) {
             assertEquals(
                 'a' + i,
                 bufferRead[i].toInt().toChar(),

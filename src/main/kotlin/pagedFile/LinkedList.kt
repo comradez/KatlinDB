@@ -1,4 +1,4 @@
-package pf
+package pagedFile
 
 class LinkedList(_capacity: Int) {
     private val capacity = _capacity
@@ -10,9 +10,9 @@ class LinkedList(_capacity: Int) {
      * @param prevNode 前一个节点编号
      * @param nextNode 后一个节点编号
      */
-    private fun link(nextNode: Int, prevNode: Int) {
-        next[prevNode] = nextNode
+    private fun link(prevNode: Int, nextNode: Int) {
         prev[nextNode] = prevNode
+        next[prevNode] = nextNode
     }
 
     /**
