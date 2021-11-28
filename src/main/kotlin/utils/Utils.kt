@@ -2,6 +2,8 @@ package utils
 
 import kotlin.experimental.and
 typealias BufferType = ByteArray
+typealias ErrorCode = Int
+typealias RID = Pair<Int, Int> // (pageId, slotId)
 
 const val PAGE_NUMBER = 60000 // 缓冲区内总页数
 const val MAX_FILE_NUMBER = 128 // 支持同时打开的文件个数

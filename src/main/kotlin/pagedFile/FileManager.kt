@@ -89,4 +89,16 @@ class FileManager {
         randomAccessFile.write(buffer, 0, PAGE_SIZE)
         randomAccessFile.close()
     }
+
+    /**
+     * @brief 在 file 文件的末尾追加一个空白的页
+     * @param file 文件对象
+     * @return 新添加空白页的页号
+     */
+    fun freshPage(file: File) : Int {
+        val randomAccessFile = RandomAccessFile(file, "rw")
+        val offset = randomAccessFile.length()
+        randomAccessFile.setLength(offset + PAGE_SIZE)
+        return (offset shr PAGE_SHIFT).toInt()
+    }
 }

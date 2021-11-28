@@ -5,13 +5,12 @@ import com.github.michaelbull.result.Result
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import pagedFile.BufferManager
+import utils.ErrorCode
 import utils.PAGE_HEADER_SIZE
 import utils.PAGE_SIZE
 
-typealias ErrorCode = Int
-
-class RecordHandler {
-    private val bufferManager = BufferManager()
+class RecordHandler(_bufferManager: BufferManager) {
+    private val bufferManager = _bufferManager
     private val openedFiles = mutableListOf<FileHandler>()
 
     /**

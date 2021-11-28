@@ -9,8 +9,6 @@ import pagedFile.BufferManager
 import utils.*
 import java.io.File
 
-typealias RID = Pair<Int, Int> // (pageId, slotId)
-
 class FileHandler(_file: File, _bufferManager: BufferManager) {
     val file = _file
     private val bufferManager = _bufferManager

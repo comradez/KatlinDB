@@ -109,6 +109,31 @@ class BufferManager {
     }
 
     /**
+     * @brief 根据文件对象和页码，修改一个页的内容
+     * @param file 文件对象
+     * @param pageId 页码数
+     * @param newBuffer 新的页面内容
+     * @remark 如果在缓存中则直接拿来，如果不在缓存中则需要LRU分配一个缓冲区空间然后放入缓冲区
+     */
+    fun updatePage(file: File, pageId: Int, newBuffer: ByteArray) {
+        val filePagePair = Pair(file, pageId)
+        val position = filePageToIndex.getOrDefault(filePagePair, -1)
+        if (position != -1) { // 缓存中存在这个页
+            pageBuffers[position] = newBuffer
+            markDirty(file, pageId)
+        } else { // 否则缓存中不存在这个页
+            val index = findReplace.getIndex() // 获取一个新的可用的 index
+            if (indexToFilePage[index] != null) { // 写回原来此处的页
+                writeBack(index)
+            }
+            fileCachePages[file]?.add(index)
+            filePageToIndex[filePagePair] = index
+            indexToFilePage[index] = filePagePair
+            pageBuffers[index] = newBuffer
+        }
+    }
+
+    /**
      * @brief 根据文件对象和页码，将一个页置为脏的（需要写回）
      * @param file 文件对象
      * @param pageId 页码数
@@ -119,5 +144,14 @@ class BufferManager {
         if (index != -1) {
             pageDirty[index] = true
         }
+    }
+
+    /**
+     * @brief 在 file 文件的末尾追加一个空白的页
+     * @param file 文件对象
+     * @return 新添加空白页的页号
+     */
+    fun freshPage(file: File) : Int {
+        return fileManager.freshPage(file)
     }
 }
