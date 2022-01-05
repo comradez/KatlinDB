@@ -1,5 +1,7 @@
 package utils
 
+import java.lang.Float.floatToIntBits
+import java.lang.Float.intBitsToFloat
 import kotlin.experimental.and
 typealias BufferType = ByteArray
 typealias ErrorCode = Int
@@ -37,6 +39,41 @@ fun readIntFromByteArray(array: ByteArray, offset: Int = 0): Int {
     data += array[offset + 2].toInt() shl 16
     data += array[offset + 3].toInt() shl 24
     return data
+}
+
+fun writeFloatToByteArray(data: Float, array: ByteArray, offset: Int = 0) {
+    writeIntToByteArray(floatToIntBits(data), array, offset)
+}
+
+fun readFloatFromByteArray(array: ByteArray, offset: Int = 0) =
+    intBitsToFloat(readIntFromByteArray(array, offset))
+
+fun writeStringToByteArray(data: String, array: ByteArray, offset: Int = 0) {
+    if (data.length > 256) {
+        throw InternalError("String $data length ${data.length}, expected <= 256")
+    }
+    for (i in 0 .. 255) {
+        array[offset + i] = if (i < data.length) {
+            data[i].code.toByte()
+        } else {
+            0
+        }
+    }
+}
+
+fun readStringFromByteArray(array: ByteArray, offset: Int = 0, size: Int?): String {
+    val zeroIndex = (0 .. 255)
+        .map { array[offset + it] == 0.toByte() }
+        .indexOf(true)
+    val stringLength = if (zeroIndex != -1) { zeroIndex } else { 256 }
+    if (size != null) {
+        assert(size == stringLength)
+    }
+    val byteArray = ByteArray(stringLength)
+    (0 until stringLength).forEach {
+        byteArray[it] = array[offset + it]
+    }
+    return byteArray.toString()
 }
 
 /**

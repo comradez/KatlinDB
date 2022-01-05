@@ -1,6 +1,7 @@
 package recordManagement
 
 import utils.BufferType
+import utils.RID
 
 data class Record(
     val rid: RID,
