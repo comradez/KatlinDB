@@ -1,34 +1,66 @@
 package indexManagement
 
-import com.github.michaelbull.result.Err
-import com.github.michaelbull.result.Ok
-import com.github.michaelbull.result.Result
 import pagedFile.BufferManager
-import pagedFile.FileManager
-import utils.ErrorCode
+import pagedFile.FileHandler
 
-/*
- * IndexHandler 是针对 Database 的
- * IndexFile 则是针对
+private typealias Table = MutableMap<String, Index> // indexName => index
+private typealias Database = Pair<FileHandler, MutableMap<String, Table>> // tableName => table
+
+/**
+ * 向上层暴露的管理索引的接口。对于每个数据库的索引处理函数，见 [IndexHandler].
  */
+class IndexManager(
+    _bufferManager: BufferManager,
+    _workDir: String
+) {
+    private val bufferManager = _bufferManager
+    private val workDir = _workDir
+    private val databases = mutableMapOf<String, Database>()
 
-class IndexManager(_bufferManager: BufferManager) {
-    val bufferManager = _bufferManager
-
-    fun createIndex(fileName: String) : Result<Unit, ErrorCode> {
-
-        return Ok(Unit)
+    fun createIndex(databaseName: String, tableName: String, indexName: String): Index {
+        val (handler, tables) = this.getDatabase(databaseName)
+        return Index(handler, handler.freshPage()).also { index ->
+            tables[tableName]!![indexName] = index
+        }
     }
 
-    fun destroyIndex(fileName: String, indexNumber: Int) : Result<Unit, ErrorCode> {
-        return Ok(Unit)
+    fun openIndex(
+        databaseName: String,
+        tableName: String,
+        indexName: String,
+        rootPageId: Int
+    ): Index {
+        val (handler, tables) = this.getDatabase(databaseName)
+        val table = tables[tableName]!!
+        return table.getOrElse(indexName) {
+            Index(handler, rootPageId).also { index ->
+                index.load()
+                table[indexName] = index
+            }
+        }
     }
 
-    fun openIndex(fileName: String, indexNumber: Int) : Result<IndexFile, ErrorCode> {
-        return Err(1)
+    fun closeIndex(databaseName: String, tableName: String, indexName: String) {
+        val tables = this.getDatabase(databaseName).second
+        tables[tableName]!!.remove(indexName)?.dump()
     }
 
-    fun closeIndex(indexHandler: IndexHandler) : Result<Unit, ErrorCode> {
-        return Ok(Unit)
+    fun closeDatabase(databaseName: String) {
+        this.databases.remove(databaseName)?.let { (handler, tables) ->
+            tables.values
+                .flatMap { table -> table.values }
+                .forEach { index -> index.dump() }
+            handler.close()
+        }
+    }
+
+    private fun getDatabase(databaseName: String) = this.databases.getOrElse(databaseName) {
+        val handler = FileHandler(
+            this.bufferManager,
+            "${workDir}/${databaseName}/${databaseName}.index"
+        )
+        return Pair(handler, mutableMapOf<String, Table>()).also { database ->
+            this.databases[databaseName] = database
+        }
     }
 }
