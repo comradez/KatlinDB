@@ -6,9 +6,8 @@ import org.antlr.v4.runtime.tree.RuleNode
 import org.antlr.v4.runtime.tree.TerminalNode
 import systemManagement.SystemManager
 
-class DatabaseVisitor : SQLBaseVisitor<QueryResult>() {
+class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<QueryResult>() {
 
-    lateinit var manager: SystemManager
     var lastStartTime: Long? = null
 
     private fun measureTimeCost(): Long? {
