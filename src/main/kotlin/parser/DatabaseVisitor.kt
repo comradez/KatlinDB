@@ -8,11 +8,12 @@ import recordManagement.buildAttributeType
 import recordManagement.buildCompareOp
 import systemManagement.*
 import utils.InternalError
+import java.lang.Exception
 
 @Suppress("NAME_SHADOWING")
 class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>() {
 
-    var lastStartTime: Long? = null
+    private var lastStartTime: Long? = null
 
     private fun measureTimeCost(): Long? {
         val currentTime = System.nanoTime()
@@ -26,20 +27,45 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         }
     }
 
-    override fun visitProgram(ctx: SQLParser.ProgramContext?): QueryResult {
-        TODO("Not yet implemented")
+    override fun visitProgram(ctx: SQLParser.ProgramContext?): List<QueryResult> {
+        val results = mutableListOf<QueryResult>()
+        for (statement in ctx!!.statement()) {
+            try {
+                when (val result = statement.accept(this)) {
+                    is QueryResult -> {
+                        result.timeCost = measureTimeCost()
+                        results.add(result)
+                    }
+                    is Unit -> {
+                        val emptyResult = EmptyResult()
+                        emptyResult.timeCost = measureTimeCost()
+                        results.add(emptyResult)
+                    }
+                    else -> throw InternalError("Bad result type")
+                }
+            } catch (e: Exception) {
+                val errorResult = ErrorResult(e.message ?: "Unknown Error")
+                results.add(errorResult)
+                break
+            }
+        }
+        return results
     }
 
     override fun visitStatement(ctx: SQLParser.StatementContext?): Any {
-        if (ctx!!.db_statement() != null) {
-            return ctx.db_statement().accept(this)
+        return if (ctx!!.db_statement() != null) {
+            ctx.db_statement().accept(this) // Unit 或者 QueryResult
         } else if (ctx.io_statement() != null) {
-            return ctx.io_statement().accept(this)
+            ctx.io_statement().accept(this) // 还没实现
         } else if (ctx.table_statement() != null) {
-            return ctx.table_statement().accept(this)
+            ctx.table_statement().accept(this) // Unit 或者 QueryResult
+        } else if (ctx.alter_statement() != null) {
+            ctx.alter_statement().accept(this) // 还没实现
+        } else if (ctx.Annotation() != null || ctx.Null() != null) {
+            Unit // 确定就是 Unit
+        } else {
+            throw InternalError("Bad Statement")
         }
-        TODO("Not yet implemented")
-        // ATTENTION
     }
 
     override fun visitCreate_db(ctx: SQLParser.Create_dbContext?) {
@@ -51,8 +77,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
     }
 
     override fun visitShow_dbs(ctx: SQLParser.Show_dbsContext?): QueryResult {
-        return QueryResult(listOf("databases"), listOf(manager.showDatabases().toList()))
-        // ATTENTION
+        return SuccessResult(listOf("databases"), listOf(manager.showDatabases().toList()))
     }
 
     override fun visitUse_db(ctx: SQLParser.Use_dbContext?) {
@@ -60,19 +85,23 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
     }
 
     override fun visitShow_tables(ctx: SQLParser.Show_tablesContext?): QueryResult {
-        return QueryResult(listOf("tables"), listOf(manager.showTables()))
+        return SuccessResult(listOf("tables"), listOf(manager.showTables()))
     }
 
     override fun visitShow_indexes(ctx: SQLParser.Show_indexesContext?): QueryResult {
-        TODO("Not yet implemented")
+        return SuccessResult(listOf("indices"), listOf(manager.showIndices()))
     }
 
-    override fun visitLoad_data(ctx: SQLParser.Load_dataContext?): QueryResult {
-        TODO("Not yet implemented")
+    override fun visitLoad_data(ctx: SQLParser.Load_dataContext?) {
+        val filename = ctx!!.String().toString()
+        val tableName = ctx.Identifier().toString()
+        manager.load(filename, tableName)
     }
 
-    override fun visitDump_data(ctx: SQLParser.Dump_dataContext?): QueryResult {
-        TODO("Not yet implemented")
+    override fun visitDump_data(ctx: SQLParser.Dump_dataContext?) {
+        val filename = ctx!!.String().toString()
+        val tableName = ctx.Identifier().toString()
+        manager.dump(filename, tableName)
     }
 
     override fun visitCreate_table(ctx: SQLParser.Create_tableContext?) {
@@ -85,7 +114,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         for ((_columnInfo, _columnMessage) in foreignKeys) {
             val columnInfo = _columnInfo as ColumnInfo
             val columnMessage = (_columnMessage as Pair<*, *>).first as String to _columnMessage.second as String
-            manager.addForeign(tableName, columnInfo, columnMessage)
+            manager.addForeign(tableName, columnInfo.name, columnMessage)
         }
         manager.setPrimary(tableName, primaryKey)
     }
@@ -108,7 +137,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
             val valueList = _valueList as List<Any?>
             manager.insertRecord(tableName, valueList)
         }
-        return QueryResult(listOf("insertedItemNumber"), listOf(listOf(valueLists.size.toString())))
+        return SuccessResult(listOf("insertedItemNumber"), listOf(listOf(valueLists.size.toString())))
     }
 
     override fun visitDelete_from_table(ctx: SQLParser.Delete_from_tableContext?): QueryResult {
@@ -130,8 +159,8 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         )
     }
 
-    override fun visitSelect_table_(ctx: SQLParser.Select_table_Context?): QueryResult {
-        return ctx!!.select_table().accept(this) as QueryResult
+    override fun visitSelect_table_(ctx: SQLParser.Select_table_Context?): SuccessResult {
+        return ctx!!.select_table().accept(this) as SuccessResult
     }
 
     override fun visitSelect_table(ctx: SQLParser.Select_tableContext?): QueryResult {
@@ -157,32 +186,59 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         )
     }
 
-    override fun visitAlter_add_index(ctx: SQLParser.Alter_add_indexContext?): QueryResult {
-        TODO("Not yet implemented")
+    override fun visitAlter_add_index(ctx: SQLParser.Alter_add_indexContext?) {
+        val tableName = ctx!!.Identifier().toString()
+        val columnNames = (ctx.identifiers().accept(this) as List<*>).map { it as String }
+        for (columnName in columnNames) {
+            val indexName = "$tableName.$columnName"
+            manager.createIndex(tableName, columnName, indexName)
+        }
     }
 
-    override fun visitAlter_drop_index(ctx: SQLParser.Alter_drop_indexContext?): QueryResult {
-        TODO("Not yet implemented")
+    override fun visitAlter_drop_index(ctx: SQLParser.Alter_drop_indexContext?) {
+        val tableName = ctx!!.Identifier().toString()
+        val columnNames = (ctx.identifiers().accept(this) as List<*>).map { it as String }
+        for (columnName in columnNames) {
+            val indexName = "$tableName.$columnName"
+            manager.dropIndex(indexName)
+        }
     }
 
-    override fun visitAlter_table_drop_pk(ctx: SQLParser.Alter_table_drop_pkContext?): QueryResult {
-        TODO("Not yet implemented")
+    override fun visitAlter_table_drop_pk(ctx: SQLParser.Alter_table_drop_pkContext?) {
+        val tableName = ctx!!.Identifier(0).toString()
+        val primaryKeyColumnName = ctx.Identifier(1)?.toString()
+        // 明明一张表只有一列是主键为什么还要显式把键名写出来
+        manager.dropPrimary(tableName)
     }
 
-    override fun visitAlter_table_drop_foreign_key(ctx: SQLParser.Alter_table_drop_foreign_keyContext?): QueryResult {
-        TODO("Not yet implemented")
+    override fun visitAlter_table_drop_foreign_key(ctx: SQLParser.Alter_table_drop_foreign_keyContext?) {
+        val tableName = ctx!!.Identifier(0).toString()
+        val columnName = ctx.Identifier(1).toString()
+        manager.dropForeign(tableName, columnName)
     }
 
-    override fun visitAlter_table_add_pk(ctx: SQLParser.Alter_table_add_pkContext?): QueryResult {
-        TODO("Not yet implemented")
+    override fun visitAlter_table_add_pk(ctx: SQLParser.Alter_table_add_pkContext?) {
+        val tableName = ctx!!.Identifier(0).toString()
+        val primary = (ctx.identifiers().accept(this) as List<*>).map { it as String }
+        manager.setPrimary(tableName, primary)
     }
 
-    override fun visitAlter_table_add_foreign_key(ctx: SQLParser.Alter_table_add_foreign_keyContext?): QueryResult {
-        TODO("Not yet implemented")
+    override fun visitAlter_table_add_foreign_key(ctx: SQLParser.Alter_table_add_foreign_keyContext?) {
+        val tableName = ctx!!.Identifier(0).toString()
+        val foreignTableName = ctx.Identifier(2).toString()
+        val columnNames = (ctx.identifiers(0).accept(this) as List<*>).map { it as String }
+        val referNames = (ctx.identifiers(1).accept(this) as List<*>).map { it as String }
+        for ((columnName, referName) in columnNames zip referNames) {
+            manager.addForeign(tableName, columnName, foreignTableName to referName)
+        }
     }
 
-    override fun visitAlter_table_add_unique(ctx: SQLParser.Alter_table_add_uniqueContext?): QueryResult {
-        TODO("Not yet implemented")
+    override fun visitAlter_table_add_unique(ctx: SQLParser.Alter_table_add_uniqueContext?) {
+        val tableName = ctx!!.Identifier().toString()
+        val columnNames = (ctx.identifiers().accept(this) as List<*>).map { it as String }
+        for (columnName in columnNames) {
+            manager.addUnique(tableName, columnName)
+        }
     }
 
     override fun visitField_list(ctx: SQLParser.Field_listContext?)
@@ -220,14 +276,16 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
                 }
                 is SQLParser.Foreign_key_fieldContext -> {
                     val field = field as SQLParser.Foreign_key_fieldContext
-                    val (_fieldName, _tableName, _referName) = field.accept(this)!! as Triple<*, *, *>
-                    val fieldName = _fieldName as String
+                    val (_fieldNames, _tableName, _referNames) = field.accept(this)!! as Triple<*, *, *>
+                    val fieldNames = (_fieldNames as List<*>).map { it as String }
                     val tableName = _tableName as String
-                    val referName = _referName as String
-                    if (fieldName in foreignKeys.keys) {
-                        throw InternalError("Foreign key $fieldName is duplicated with existing ones.")
+                    val referNames = (_referNames as List<*>).map { it as String }
+                    for ((fieldName, referName) in fieldNames zip referNames) {
+                        if (fieldName in foreignKeys.keys) {
+                            throw InternalError("Foreign key $fieldName is duplicated with existing ones.")
+                        }
+                        foreignKeys[fieldName] = tableName to referName
                     }
-                    foreignKeys[fieldName] = tableName to referName
                 }
                 else -> throw InternalError("An abstract field node is not allowed")
             }
@@ -250,12 +308,17 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         // 其实是 List<String>
     }
 
-    override fun visitForeign_key_field(ctx: SQLParser.Foreign_key_fieldContext?): Triple<String, String, String> {
-        requireNotNull(ctx)
+    override fun visitForeign_key_field(ctx: SQLParser.Foreign_key_fieldContext?)
+    : Triple<List<String>, String, List<String>> {
+        val tableName = if (ctx!!.Identifier().size > 1) {
+            ctx.Identifier(1).toString()
+        } else { ctx.Identifier(0).toString() }
+        val fieldNames = (ctx.identifiers(0).accept(this) as List<*>).map { it as String }
+        val referNames = (ctx.identifiers(1).accept(this) as List<*>).map { it as String }
         return Triple(
-            ctx.Identifier()[0].toString(),
-            ctx.Identifier()[1].toString(),
-            ctx.Identifier()[2].toString()
+            fieldNames,
+            tableName,
+            referNames
         )
     }
 
@@ -305,7 +368,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val tableName = _tableName as String?
         val columnName = _columnName as String
         val operator = buildCompareOp(ctx.operator_().toString())
-        val result = ctx.select_table().accept(this) as QueryResult
+        val result = ctx.select_table().accept(this) as SuccessResult
         val value = manager.resultToValue(result, false)
         return Condition(tableName, columnName, compareWith(operator, value))
     }
@@ -334,7 +397,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val (_tableName, _columnName) = ctx!!.column().accept(this) as Pair<*, *>
         val tableName = _tableName as String?
         val columnName = _columnName as String
-        val result = ctx.select_table().accept(this) as QueryResult
+        val result = ctx.select_table().accept(this) as SuccessResult
         val value = manager.resultToValue(result, true) as List<Any?>
         // 这个 value 是 select 出的结果，必须得是 List 才可以，不然不能 existIn
         return Condition(tableName, columnName, existsIn(value))
@@ -404,18 +467,5 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
 
     override fun visitAggregator(ctx: SQLParser.AggregatorContext?): AggregationSelector.Aggregator {
         return buildAggregator(ctx!!.toString())
-//        return if (ctx!!.Count() != null) {
-//            AggregationSelector.Aggregator.COUNT
-//        } else if (ctx.Average() != null) {
-//            AggregationSelector.Aggregator.AVERAGE
-//        } else if (ctx.Max() != null) {
-//            AggregationSelector.Aggregator.MAX
-//        } else if (ctx.Min() != null) {
-//            AggregationSelector.Aggregator.MIN
-//        } else if (ctx.Sum() != null) {
-//            AggregationSelector.Aggregator.SUM
-//        } else {
-//            throw InternalError("Bad aggregator.")
-//        }
     }
 }

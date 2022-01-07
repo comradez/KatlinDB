@@ -14,7 +14,7 @@ class TableInfo(
     private val columns = _columns.toMutableList()
     var primary: List<String> = mutableListOf()
     val foreign = hashMapOf<String, Pair<String, String>>()
-    val unique = hashMapOf<String, String>()
+    val unique = hashSetOf<String>()
     val indices = hashMapOf<String, Int>()
 
     var columnMap = columns.associateBy { it.name }
@@ -45,7 +45,7 @@ class TableInfo(
             }
             requireNotNull(descriptionMap[columnName]?.key)
         }
-        for (columnName in unique.keys) {
+        for (columnName in unique) {
             val key = descriptionMap[columnName]?.key
             descriptionMap[columnName]?.key = key ?: "UNI"
             requireNotNull(descriptionMap[columnName]?.key)
@@ -76,8 +76,8 @@ class TableInfo(
         foreign.remove(column.name)
     }
 
-    fun addUnique(column: ColumnInfo, uniqueInfo: String) {
-        unique[column.name] = uniqueInfo
+    fun addUnique(column: ColumnInfo) {
+        unique.add(column.name)
     }
 
     fun buildRecord(valueList: List<Any>): ByteArray {

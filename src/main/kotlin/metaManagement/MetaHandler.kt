@@ -100,9 +100,9 @@ class MetaHandler(
         dump()
     }
 
-    fun addUnique(tableName: String, column: ColumnInfo, unique: String) {
+    fun addUnique(tableName: String, column: ColumnInfo) {
         val table = dbInfo.tableMap[tableName] ?: throw InternalError("No table $tableName in database $dbName found.")
-        table.addUnique(column, unique)
+        table.addUnique(column)
     }
 
     fun renameTable(tableName: String, newTableName: String) {

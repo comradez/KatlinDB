@@ -158,14 +158,14 @@ class SystemManager(private val workDir: String) {
 
     fun addForeign(
         tableName: String,
-        column: ColumnInfo,
+        columnName: String,
         foreign: Pair<String, String>,
         foreignName: String? = null
     ) {
         TODO()
     }
 
-    fun dropForeign(tableName: String, column: ColumnInfo, foreignName: String?) {
+    fun dropForeign(tableName: String, columnName: String) {
         TODO()
     }
 
@@ -187,5 +187,13 @@ class SystemManager(private val workDir: String) {
 
     fun resultToValue(result: QueryResult, isIn: Boolean): Any {
         TODO()
+    }
+
+    fun load(filename: String, tableName: String) {
+
+    }
+
+    fun dump(filename: String, tableName: String) {
+
     }
 }
