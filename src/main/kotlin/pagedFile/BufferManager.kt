@@ -6,8 +6,7 @@ import utils.PAGE_SIZE
 import java.io.File
 import java.io.FileNotFoundException
 
-class BufferManager {
-    private val fileManager = FileManager()
+class BufferManager(private val fileManager: FileManager) {
     private val findReplace = FindReplace(PAGE_NUMBER)
 
     private val pageBuffers = arrayOfNulls<BufferType>(PAGE_NUMBER) // 页缓冲区
