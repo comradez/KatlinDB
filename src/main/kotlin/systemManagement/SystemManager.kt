@@ -135,7 +135,7 @@ class SystemManager(private val workDir: String) {
     fun updateRecords(
         tableName: String,
         conditions: List<Condition>,
-        values: Map<String, Any>
+        values: Map<String, Any?>
     ): QueryResult {
         TODO()
     }
@@ -148,7 +148,7 @@ class SystemManager(private val workDir: String) {
         TODO()
     }
 
-    fun setPrimary(tableName: String, primary: List<String>) {
+    fun setPrimary(tableName: String, primary: List<String>?) {
         TODO()
     }
 
@@ -182,6 +182,10 @@ class SystemManager(private val workDir: String) {
     }
 
     fun dropIndex(indexName: String) {
+        TODO()
+    }
+
+    fun resultToValue(result: QueryResult, isIn: Boolean): Any {
         TODO()
     }
 }

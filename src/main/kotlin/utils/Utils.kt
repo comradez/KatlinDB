@@ -20,10 +20,9 @@ const val PAGE_HEADER_SIZE = 64 // 每页的页头大小
  * @param offset 字节数组写入位置
  */
 fun writeIntToByteArray(data: Int, array: ByteArray, offset: Int = 0) {
-    array[offset] = (data and 0xFF).toByte()
-    array[offset + 1] = ((data shr 8) and 0xFF).toByte()
-    array[offset + 2] = ((data shr 16) and 0xFF).toByte()
-    array[offset + 3] = ((data shr 24) and 0xFF).toByte()
+    for (i in 0 until 4) {
+        array[offset + i] = ((data shr i) and 0xFF).toByte()
+    }
 }
 
 /**
@@ -33,12 +32,7 @@ fun writeIntToByteArray(data: Int, array: ByteArray, offset: Int = 0) {
  * @return 读取到的 32 位整数
  */
 fun readIntFromByteArray(array: ByteArray, offset: Int = 0): Int {
-    var data = 0
-    data += array[offset].toInt()
-    data += array[offset + 1].toInt() shl 8
-    data += array[offset + 2].toInt() shl 16
-    data += array[offset + 3].toInt() shl 24
-    return data
+    return (0 until 4).sumOf { array[offset + it].toInt() shl (8 * it) }
 }
 
 fun writeFloatToByteArray(data: Float, array: ByteArray, offset: Int = 0) {
@@ -74,6 +68,16 @@ fun readStringFromByteArray(array: ByteArray, offset: Int = 0, size: Int?): Stri
         byteArray[it] = array[offset + it]
     }
     return byteArray.toString()
+}
+
+fun writeLongToByteArray(data: Long, array: ByteArray, offset: Int = 0) {
+    for (i in 0 until 8) {
+        array[offset + i] = ((data shr i) and 0xFF).toByte()
+    }
+}
+
+fun readLongFromByteArray(array: ByteArray, offset: Int = 0): Long {
+    return (0 until 8).sumOf { array[offset + it].toLong() shl (8 * it) }
 }
 
 /**

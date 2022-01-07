@@ -26,6 +26,7 @@ class Converter {
                     AttributeType.INT -> writeIntToByteArray(value as Int, record, offset)
                     AttributeType.FLOAT -> writeFloatToByteArray(value as Float, record, offset)
                     AttributeType.STRING -> writeStringToByteArray(value as String, record, offset)
+                    AttributeType.LONG -> writeLongToByteArray(value as Long, record, offset)
                 }
                 offset += size
             }
@@ -43,6 +44,7 @@ class Converter {
                         AttributeType.INT -> readIntFromByteArray(data, offset)
                         AttributeType.FLOAT -> readFloatFromByteArray(data, offset)
                         AttributeType.STRING -> readStringFromByteArray(data, offset = offset, size = size)
+                        AttributeType.LONG -> readLongFromByteArray(data, offset)
                     }
                 )
                 offset += size

@@ -9,3 +9,15 @@ enum class CompareOp {
     NE_OP, // 不等于
     NO_OP  // 无操作
 }
+
+fun buildCompareOp(compareOp: String): CompareOp {
+    return when (compareOp) {
+        "=" -> CompareOp.EQ_OP
+        "<"  -> CompareOp.LT_OP
+        ">"  -> CompareOp.GT_OP
+        "<=" -> CompareOp.LE_OP
+        ">=" -> CompareOp.GE_OP
+        "<>" -> CompareOp.NE_OP
+        else -> CompareOp.NO_OP
+    }
+}

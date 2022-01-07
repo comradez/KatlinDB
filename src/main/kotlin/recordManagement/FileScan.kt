@@ -32,7 +32,13 @@ class FileScan {
                     }
                     AttributeType.STRING -> {
                         val requiredAttr = requiredAttrBytes.decodeToString()
-                        if (comp(requiredAttr, value as String, compareOp)) {
+                        if (strComp(requiredAttr, value as String, compareOp)) {
+                            yield(record)
+                        }
+                    }
+                    AttributeType.LONG -> {
+                        val requiredAttr = ByteBuffer.wrap(requiredAttrBytes).order(ByteOrder.LITTLE_ENDIAN).long
+                        if (comp(requiredAttr, value as Long, compareOp)) {
                             yield(record)
                         }
                     }
@@ -40,7 +46,7 @@ class FileScan {
             }
         }
 
-    private fun comp(first: Int, second: Int, op: CompareOp): Boolean = when (op) {
+    private fun<T: Comparable<T>> comp(first: T, second: T, op: CompareOp): Boolean = when (op) {
         CompareOp.GT_OP -> first > second
         CompareOp.LT_OP -> first < second
         CompareOp.GE_OP -> first >= second
@@ -50,17 +56,8 @@ class FileScan {
         CompareOp.NO_OP -> true
     }
 
-    private fun comp(first: Float, second: Float, op: CompareOp): Boolean = when (op) {
-        CompareOp.GT_OP -> first > second
-        CompareOp.LT_OP -> first < second
-        CompareOp.GE_OP -> first >= second
-        CompareOp.LE_OP -> first <= second
-        CompareOp.EQ_OP -> first == second
-        CompareOp.NE_OP -> first != second
-        CompareOp.NO_OP -> true
-    }
 
-    private fun comp(first: String, second: String, op: CompareOp): Boolean = when (op) {
+    private fun strComp(first: String, second: String, op: CompareOp): Boolean = when (op) {
         CompareOp.EQ_OP -> first == second
         CompareOp.NE_OP -> first != second
         else -> true // 字符串只能比较相等或不等，输入其他 op 视同 NO_OP

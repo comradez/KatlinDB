@@ -4,14 +4,14 @@ import recordManagement.CompareOp
 
 typealias Predicate = (Any) -> Boolean
 
-class Condition(val tableName: String, val columnName: String, val predicate: Predicate) {
+class Condition(val tableName: String?, val columnName: String, val predicate: Predicate) {
 }
 
 fun compareWith(compareOp: CompareOp, value: Any): Predicate {
     TODO()
 }
 
-fun existsIn(values: List<Any>): Predicate {
+fun existsIn(values: List<Any?>): Predicate {
     TODO()
 }
 
