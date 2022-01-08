@@ -29,25 +29,39 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
 
     override fun visitProgram(ctx: SQLParser.ProgramContext?): List<QueryResult> {
         val results = mutableListOf<QueryResult>()
+        measureTimeCost()
         for (statement in ctx!!.statement()) {
-            try {
-                when (val result = statement.accept(this)) {
-                    is QueryResult -> {
-                        result.timeCost = measureTimeCost()
-                        results.add(result)
-                    }
-                    is Unit -> {
-                        val emptyResult = EmptyResult()
-                        emptyResult.timeCost = measureTimeCost()
-                        results.add(emptyResult)
-                    }
-                    else -> throw InternalError("Bad result type")
+            when (val result = statement.accept(this)) {
+                is QueryResult -> {
+                    result.timeCost = measureTimeCost()
+                    results.add(result)
                 }
-            } catch (e: Exception) {
-                val errorResult = ErrorResult(e.message ?: "Unknown Error")
-                results.add(errorResult)
-                break
+                is Unit -> {
+                    val emptyResult = EmptyResult()
+                    emptyResult.timeCost = measureTimeCost()
+                    results.add(emptyResult)
+                }
+                else -> throw InternalError("Bad result type")
             }
+//            try {
+//                when (val result = statement.accept(this)) {
+//                    is QueryResult -> {
+//                        result.timeCost = measureTimeCost()
+//                        results.add(result)
+//                    }
+//                    is Unit -> {
+//                        val emptyResult = EmptyResult()
+//                        emptyResult.timeCost = measureTimeCost()
+//                        results.add(emptyResult)
+//                    }
+//                    else -> throw InternalError("Bad result type")
+//                }
+//            } catch (e: Exception) {
+//                val errorResult = ErrorResult(e.message ?: "Unknown Error")
+//                errorResult.timeCost = measureTimeCost()
+//                results.add(errorResult)
+//                break
+//            }
         }
         return results
     }
@@ -229,6 +243,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val columnNames = (ctx.identifiers(0).accept(this) as List<*>).map { it as String }
         val referNames = (ctx.identifiers(1).accept(this) as List<*>).map { it as String }
         for ((columnName, referName) in columnNames zip referNames) {
+            print("$columnName, $referName")
             manager.addForeign(tableName, columnName, foreignTableName to referName)
         }
     }
@@ -324,7 +339,9 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
 
     override fun visitType_(ctx: SQLParser.Type_Context?): Pair<AttributeType, Int> {
         val type = buildAttributeType(ctx!!.getChild(0).toString())
-        val size = ctx.Integer().toString().toInt() ?: 0
+        val size = if (ctx.Integer() != null) {
+            ctx.Integer().toString().toInt()
+        } else { 0 }
         return type to size
     }
 

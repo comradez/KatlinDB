@@ -1,10 +1,14 @@
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.get
+import pagedFile.BufferManager
+import pagedFile.FileManager
 import recordManagement.*
+import utils.RID
+import java.io.File
 import kotlin.test.Test
 
 internal class FileHandlerTest {
-    private val recordHandler = RecordHandler()
+    private val recordHandler = RecordHandler(BufferManager(FileManager()))
     private val fileName =  "testFile2"
 
     @Test

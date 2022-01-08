@@ -1,6 +1,5 @@
 package dataConverter
 
-import com.github.michaelbull.result.zip
 import recordManagement.AttributeType
 import recordManagement.Record
 import utils.*

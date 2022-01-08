@@ -4,17 +4,23 @@ import indexManagement.IndexManager
 import metaManagement.MetaManager
 import metaManagement.info.ColumnInfo
 import metaManagement.info.TableInfo
+import org.antlr.v4.runtime.CharStream
+import org.antlr.v4.runtime.CharStreams
+import org.antlr.v4.runtime.CommonTokenStream
 import pagedFile.BufferManager
 import pagedFile.FileManager
 import parser.DatabaseVisitor
 import parser.QueryResult
+import parser.SQLLexer
+import parser.SQLParser
 import recordManagement.RecordHandler
 import utils.DatabaseAlreadyExistsError
 import utils.DatabaseNotExistsError
 import utils.NoUsingDatabaseError
 import java.io.File
+import java.io.InputStream
 
-class SystemManager(private val workDir: String) {
+open class SystemManager(private val workDir: String) {
     init {
         with(File(workDir)) {
             this.mkdirs()
@@ -33,12 +39,17 @@ class SystemManager(private val workDir: String) {
         .orEmpty()
         .toMutableSet()
 
-    private var selectedDatabase: String? = null
+    var selectedDatabase: String? = null
 
     private fun databasePath(databaseName: String): String = "${this.workDir}/${databaseName}"
 
-    fun execute(sql: String): QueryResult {
-        TODO()
+    fun execute(sql: String): List<QueryResult> {
+        val stream = CharStreams.fromString(sql)
+        val lexer = SQLLexer(stream)
+        val tokens = CommonTokenStream(lexer)
+        val parser = SQLParser(tokens)
+        val tree = parser.program()
+        return (visitor.visit(tree) as List<*>).map { it as QueryResult }
     }
 
     fun showDatabases(): List<String> = this.databases.toList()

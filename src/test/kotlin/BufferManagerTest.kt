@@ -1,9 +1,10 @@
 import pagedFile.BufferManager
+import pagedFile.FileManager
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 internal class BufferManagerTest {
-    private val bufferManager = BufferManager()
+    private val bufferManager = BufferManager(FileManager())
     private val filename = "testFile"
 
     @Test

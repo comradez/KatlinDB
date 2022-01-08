@@ -14,7 +14,7 @@ fun buildAttributeType(type: String): AttributeType {
         "LONG" -> AttributeType.LONG
         "INT" -> AttributeType.INT
         "FLOAT" -> AttributeType.FLOAT
-        "STRING" -> AttributeType.STRING
+        "VARCHAR" -> AttributeType.STRING
         else -> throw InternalError("Invalid type literal $type.")
     }
 }
