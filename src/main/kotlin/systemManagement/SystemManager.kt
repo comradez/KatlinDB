@@ -11,9 +11,14 @@ import org.antlr.v4.runtime.CommonTokenStream
 import pagedFile.BufferManager
 import pagedFile.FileManager
 import parser.*
+import recordManagement.AttributeType
+import recordManagement.CompareOp
 import recordManagement.RecordHandler
 import utils.*
 import java.io.File
+import java.util.*
+import kotlin.math.max
+import kotlin.math.min
 
 open class SystemManager(private val workDir: String) {
     init {
@@ -171,9 +176,9 @@ open class SystemManager(private val workDir: String) {
         val oldRecord = this.recordHandler.openRecord(metaHandler.dbName, tableName)
         oldRecord.getItemRIDs()
             .map { oldTableInfo.parseRecord(oldRecord.getRecord(it)) }
-            .forEach { values ->
-                values.toMutableList().add(info.getDescription().default)
-                val record = newTableInfo.buildRecord(values)
+            .forEach { row ->
+                row.toMutableList().add(info.getDescription().default)
+                val record = newTableInfo.buildRecord(row)
                 newRecord.insertRecord(record)
             }
         this.recordHandler.removeRecord(metaHandler.dbName, tableName)
@@ -191,22 +196,21 @@ open class SystemManager(private val workDir: String) {
         val oldRecord = this.recordHandler.openRecord(metaHandler.dbName, tableName)
         oldRecord.getItemRIDs()
             .map { oldTableInfo.parseRecord(oldRecord.getRecord(it)) }
-            .forEach { values ->
-                values.toMutableList().removeAt(columnIndex)
-                val record = newTableInfo.buildRecord(values)
+            .forEach { row ->
+                row.toMutableList().removeAt(columnIndex)
+                val record = newTableInfo.buildRecord(row)
                 newRecord.insertRecord(record)
             }
         this.recordHandler.removeRecord(metaHandler.dbName, tableName)
         this.recordHandler.renameRecord(metaHandler.dbName, "${tableName}.copy", tableName)
     }
 
-    fun insertRecord(tableName: String, values: List<Any?>) {
+    fun insertRecord(tableName: String, row: List<Any?>) {
         val (metaHandler, tableInfo) = this.selectTable(tableName)
-        val row = tableInfo.buildRecord(values) // TODO 合法性检查
-        this.checkConstraints(tableInfo, values)
+        this.checkInsertConstraints(tableInfo, row)
         val record = this.recordHandler.openRecord(metaHandler.dbName, tableName)
-        val rid = record.insertRecord(row)
-        this.insertIndex(metaHandler, tableInfo, rid, values)
+        val rid = record.insertRecord(tableInfo.buildRecord(row))
+        this.insertIndex(metaHandler, tableInfo, rid, row)
     }
 
     fun selectRecords(
@@ -223,13 +227,37 @@ open class SystemManager(private val workDir: String) {
     fun updateRecords(
         tableName: String,
         conditions: List<Condition>,
-        values: Map<String, Any?>
+        map: Map<String, Any?>
     ): QueryResult {
-        TODO()
+        val (metaHandler, tableInfo) = this.selectTable(tableName)
+        // TODO map 的合法性检查
+        val map = map.map { (columnName, value) -> tableInfo.getColumnIndex(columnName) to value }
+        val record = this.recordHandler.openRecord(metaHandler.dbName, tableName)
+        val values = this.selectRecords(metaHandler, tableInfo, conditions).toList()
+        values.forEach { (rid, oldRow) ->
+            this.checkDeleteConstraints(tableInfo, oldRow)
+            val newRow = oldRow.toMutableList()
+            map.forEach { (columnIndex, value) ->
+                newRow[columnIndex] = value
+            }
+            this.checkInsertConstraints(tableInfo, newRow)
+            this.deleteIndex(metaHandler, tableInfo, rid, oldRow)
+            record.updateRecord(rid, tableInfo.buildRecord(newRow))
+            this.insertIndex(metaHandler, tableInfo, rid, newRow)
+        }
+        return SuccessResult(listOf("Updated"), listOf(listOf(values.size)))
     }
 
     fun deleteRecords(tableName: String, conditions: List<Condition>): QueryResult {
-        TODO()
+        val (metaHandler, tableInfo) = this.selectTable(tableName)
+        val record = this.recordHandler.openRecord(metaHandler.dbName, tableName)
+        val values = this.selectRecords(metaHandler, tableInfo, conditions).toList()
+        values.forEach { (rid, row) ->
+            this.checkDeleteConstraints(tableInfo, row)
+            record.deleteRecord(rid)
+            this.deleteIndex(metaHandler, tableInfo, rid, row)
+        }
+        return SuccessResult(listOf("Deleted"), listOf(listOf(values.size)))
     }
 
     fun addUnique(tableName: String, columnName: String) {
@@ -302,8 +330,8 @@ open class SystemManager(private val workDir: String) {
         val columnIndex = tableInfo.getColumnIndex(columnName)
         val record = this.recordHandler.openRecord(metaHandler.dbName, tableName)
         record.getItemRIDs().forEach { rid ->
-            val values = tableInfo.parseRecord(record.getRecord(rid))
-            val key = values[columnIndex] as Int
+            val row = tableInfo.parseRecord(record.getRecord(rid))
+            val key = row[columnIndex] as Int
             index.put(key, rid)
         }
     }
@@ -338,11 +366,11 @@ open class SystemManager(private val workDir: String) {
         metaHandler.dropIndex(indexName)
     }
 
-    fun resultToValue(result: QueryResult, isIn: Boolean): Any {
-        TODO()
+    private fun checkInsertConstraints(tableInfo: TableInfo, row: List<Any?>) {
+        // TODO
     }
 
-    private fun checkConstraints(tableInfo: TableInfo, values: List<Any?>) {
+    private fun checkDeleteConstraints(tableInfo: TableInfo, row: List<Any?>) {
         // TODO
     }
 
@@ -350,29 +378,121 @@ open class SystemManager(private val workDir: String) {
         metaHandler: MetaHandler,
         tableInfo: TableInfo,
         rid: RID,
-        values: List<Any?>
+        row: List<Any?>
     ) {
-        TODO()
+        tableInfo.indices.forEach { (columnName, rootPageId) ->
+            val index = this.indexManager.openIndex(
+                metaHandler.dbName,
+                tableInfo.name,
+                columnName,
+                rootPageId
+            )
+            val columnIndex = tableInfo.getColumnIndex(columnName)
+            index.put(row[columnIndex] as Int? ?: Int.MIN_VALUE, rid)
+        }
+    }
+
+    private fun deleteIndex(
+        metaHandler: MetaHandler,
+        tableInfo: TableInfo,
+        rid: RID,
+        row: List<Any?>
+    ) {
+        tableInfo.indices.forEach { (columnName, rootPageId) ->
+            val index = this.indexManager.openIndex(
+                metaHandler.dbName,
+                tableInfo.name,
+                columnName,
+                rootPageId
+            )
+            val columnIndex = tableInfo.getColumnIndex(columnName)
+            index.remove(row[columnIndex] as Int? ?: Int.MIN_VALUE)
+        }
     }
 
     private fun selectIndices(
+        metaHandler: MetaHandler,
         tableInfo: TableInfo,
         conditions: List<Condition>
-    ): Sequence<RID> {
+    ): Set<RID> {
         val ranges = mutableMapOf<String, Pair<Int, Int>>()
-        TODO()
-//        conditions.asSequence()
-//            .filter { condition -> condition.tableName == tableInfo.name }
-//            .filter { condition -> tableInfo.existIndex(condition.columnName) }
-//            .forEach { (_, columnName, predicate) ->
-//                if ()
-//            }
+        conditions.asSequence()
+            .filter { condition -> condition.tableName == tableInfo.name }
+            .filter { condition -> tableInfo.existIndex(condition.columnName) }
+            .forEach { (_, columnName, predicate) ->
+                val columnInfo = tableInfo.columnMap[columnName]!!
+                if (columnInfo.type == AttributeType.INT && predicate is CompareWith) {
+                    val value = predicate.rhs as Int
+                    when (predicate.op) {
+                        CompareOp.EQ_OP -> ranges.compute(columnName) { _, boundary ->
+                            if (boundary == null) {
+                                value to value
+                            } else {
+                                val (l, r) = boundary
+                                max(value, l) to min(value, r)
+                            }
+                        }
+                        CompareOp.LT_OP -> ranges.compute(columnName) { _, boundary ->
+                            if (boundary == null) {
+                                Int.MIN_VALUE to value - 1
+                            } else {
+                                val (l, r) = boundary
+                                l to min(value - 1, r)
+                            }
+                        }
+                        CompareOp.GT_OP -> ranges.compute(columnName) { _, boundary ->
+                            if (boundary == null) {
+                                value + 1 to Int.MAX_VALUE
+                            } else {
+                                val (l, r) = boundary
+                                max(value + 1, l) to r
+                            }
+                        }
+                        CompareOp.LE_OP -> ranges.compute(columnName) { _, boundary ->
+                            if (boundary == null) {
+                                Int.MIN_VALUE to value
+                            } else {
+                                val (l, r) = boundary
+                                l to min(value, r)
+                            }
+                        }
+                        CompareOp.GE_OP -> ranges.compute(columnName) { _, boundary ->
+                            if (boundary == null) {
+                                value to Int.MAX_VALUE
+                            } else {
+                                val (l, r) = boundary
+                                max(value, l) to r
+                            }
+                        }
+                        CompareOp.NE_OP -> {}
+                    }
+                }
+            }
+        return ranges.map { (columnName, boundary) ->
+            val index = this.indexManager.openIndex(
+                metaHandler.dbName,
+                tableInfo.name,
+                "${tableInfo.name}.${columnName}",
+                tableInfo.indices[columnName]!!
+            )
+            val (l, r) = boundary
+            index.get(l, r).toSet()
+        }.reduceOrNull(Set<RID>::intersect).orEmpty()
     }
 
     private fun selectRecords(
+        metaHandler: MetaHandler,
         tableInfo: TableInfo,
-        predicate: Predicate
-    ): Sequence<Pair<RID, Any?>> = sequence {
-        TODO()
+        conditions: List<Condition>
+    ): Sequence<Pair<RID, List<Any?>>> {
+        val record = this.recordHandler.openRecord(metaHandler.dbName, tableInfo.name)
+        val values = this.selectIndices(metaHandler, tableInfo, conditions).asSequence()
+            .map { rid -> rid to tableInfo.parseRecord(record.getRecord(rid)) }
+        val predicates = conditions.map { condition ->
+            val columnIndex = tableInfo.getColumnIndex(condition.columnName)
+            val columnInfo = tableInfo.columns[columnIndex]
+            condition.predicate.build(columnIndex to columnInfo)
+        }
+        return values.filter { (_, row) -> predicates.all { p -> p(row) } }
     }
 }

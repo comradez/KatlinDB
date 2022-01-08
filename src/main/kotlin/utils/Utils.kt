@@ -3,6 +3,7 @@ package utils
 import java.lang.Float.floatToIntBits
 import java.lang.Float.intBitsToFloat
 import kotlin.experimental.and
+
 typealias BufferType = ByteArray
 typealias ErrorCode = Int
 typealias RID = Pair<Int, Int> // (pageId, slotId)
@@ -46,7 +47,7 @@ fun writeStringToByteArray(data: String, array: ByteArray, offset: Int = 0) {
     if (data.length > 256) {
         throw InternalError("String $data length ${data.length}, expected <= 256")
     }
-    for (i in 0 .. 255) {
+    for (i in 0..255) {
         array[offset + i] = if (i < data.length) {
             data[i].code.toByte()
         } else {
@@ -56,7 +57,7 @@ fun writeStringToByteArray(data: String, array: ByteArray, offset: Int = 0) {
 }
 
 fun readStringFromByteArray(array: ByteArray, offset: Int = 0, size: Int?): String {
-    val zeroIndex = (0 .. 255)
+    val zeroIndex = (0..255)
         .map { array[offset + it] == 0.toByte() }
         .indexOf(true)
     val stringLength = if (zeroIndex != -1) { zeroIndex } else { 256 }
@@ -130,7 +131,19 @@ fun getVacantMask(index: Int): Byte {
 
 fun getOnes(data: Byte): List<Int> {
     val uData = data.toUByte()
-    return (0 .. 7)
+    return (0..7)
         .filter { uData and (1 shl (7 - it)).toUByte() != 0.toUByte() }
         .toList()
+}
+
+fun <T> trimListToPrint(
+    list: List<T>,
+    limit: Int = list.size,
+    serializer: (T) -> String = { it.toString() }
+): List<String> {
+    return if (list.size > limit) {
+        list.asSequence().map(serializer).take(limit).toMutableList().also { it.add("...") }
+    } else {
+        list.map(serializer)
+    }
 }

@@ -1,10 +1,12 @@
 package parser
 
 import org.sk.PrettyTable
+import utils.NestedSelectError
+import utils.trimListToPrint
 
 abstract class QueryResult(
     val headers: List<String>?,
-    val data: List<List<String>>?
+    val data: List<List<Any?>>?
 ) {
     var timeCost: Long? = null
 
@@ -14,7 +16,7 @@ abstract class QueryResult(
         }
         val prettyTable = PrettyTable(*headers.toTypedArray())
         for (line in data) {
-            prettyTable.addRow(*line.toTypedArray())
+            prettyTable.addRow(*line.map { it.toString() }.toTypedArray())
         }
         return prettyTable.toString()
     }
@@ -22,8 +24,22 @@ abstract class QueryResult(
 
 class SuccessResult(
     headers: List<String>?,
-    data: List<List<String>>?
-) : QueryResult(headers, data)
+    data: List<List<Any?>>?
+) : QueryResult(headers, data) {
+    fun toColumnForOuterSelect(): Sequence<Any?> {
+        if (this.headers!!.size != 1) {
+            throw NestedSelectError(
+                "Recursive SELECT must return just one column, got ${
+                    trimListToPrint(
+                        this.headers,
+                        3
+                    )
+                }"
+            )
+        }
+        return this.data!!.asSequence().map { it.first() }
+    }
+}
 
 class EmptyResult() : QueryResult(null, null)
 

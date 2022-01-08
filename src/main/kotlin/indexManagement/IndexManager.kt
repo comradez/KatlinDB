@@ -20,7 +20,7 @@ class IndexManager(
     fun createIndex(databaseName: String, tableName: String, indexName: String): Index {
         val (handler, tables) = this.getDatabase(databaseName)
         return Index(handler, handler.freshPage()).also { index ->
-            tables[tableName]!![indexName] = index
+            tables.getOrPut(tableName) { mutableMapOf() }[indexName] = index
         }
     }
 
