@@ -14,8 +14,10 @@ class BufferManager(private val fileManager: FileManager) {
         false
     } // 标记页面是否脏（用于写回）
     private val indexToFilePage = arrayOfNulls<Pair<File, Int>>(PAGE_NUMBER)
+
     // 页缓冲区下标 -> (文件, 页号)
     private val filePageToIndex: HashMap<Pair<File, Int>, Int> = HashMap()
+
     // (文件, 页号) -> 页缓冲区下标
     private val fileCachePages = HashMap<File, HashSet<Int>>()
     // 记录一个文件的哪些页在缓存中
@@ -49,10 +51,15 @@ class BufferManager(private val fileManager: FileManager) {
      * @return 关闭是否成功
      */
     fun closeFile(file: File) {
-        fileCachePages[file]?.forEach {
+        fileCachePages.remove(file)?.forEach {
             writeBack(it)
         } // 写回对应这个文件的所有已缓存的页面
         fileManager.closeFile(file)
+    }
+
+    fun renameFile(file: File, newName: String): Boolean {
+        fileCachePages.remove(file)?.forEach { writeBack(it) }
+        return this.fileManager.renameFile(file, newName)
     }
 
     /**
@@ -150,7 +157,7 @@ class BufferManager(private val fileManager: FileManager) {
      * @param file 文件对象
      * @return 新添加空白页的页号
      */
-    fun freshPage(file: File) : Int {
+    fun freshPage(file: File): Int {
         return fileManager.freshPage(file)
     }
 }

@@ -28,9 +28,9 @@ class DatabaseInfo(
         tableMap.remove(tableName) ?: throw InternalError("Table $tableName should exist.")
     }
 
-    fun removeColumn(tableName: String, columnName: String) {
+    fun removeColumn(tableName: String, columnName: String): Int {
         val table = tableMap[tableName]
-        table?.removeColumn(columnName) ?: throw InternalError("Table $tableName should exist.")
+        return table?.removeColumn(columnName) ?: throw InternalError("Table $tableName should exist.")
     }
 
     fun createIndex(indexName: String, tableName: String, columnName: String) {

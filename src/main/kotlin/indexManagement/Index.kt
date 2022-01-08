@@ -17,6 +17,9 @@ class Index(
 ) {
     private var root = InternalNode(_rootPageId, this.fileHandler)
 
+    val rootPageId: Int
+        get() = this.root.pageId
+
     fun load() = this.root.load()
     fun dump() = this.root.dump()
 
@@ -27,7 +30,7 @@ class Index(
                     this.root = InternalNode(
                         this.fileHandler.freshPage(),
                         this.fileHandler,
-                        _children = listOf(this.root, this.root.split())
+                        _children = sequenceOf(this.root, this.root.split())
                             .map { child -> child.max to child }
                             .toMutableList(),
                         _dirty = true,
@@ -89,7 +92,6 @@ class Index(
         abstract fun split(): TreeNode
 
         companion object {
-            @JvmStatic
             fun load(nodePageId: Int, fileHandler: FileHandler): TreeNode {
                 val buffer = fileHandler.readPage(nodePageId)
                 return when (val type = readIntFromByteArray(buffer, 0)) {
@@ -152,7 +154,7 @@ class Index(
                     }
                 }
             }
-            val child = this.children[pos].second
+            val (_, child) = this.children[pos]
             return child.put(key, value).also {
                 if (child.size > PAGE_SIZE) {
                     this.dirty = true
@@ -174,7 +176,7 @@ class Index(
                     else -> return null // max{key} < key
                 }
             }
-            val child = this.children[pos].second
+            val (_, child) = this.children[pos]
             return child.remove(key).also {
                 if (child.empty) {
                     this.dirty = true
@@ -297,7 +299,7 @@ class Index(
             this.dirty = true
             return when (val pos = this.records.binarySearchBy(key) { (key, _) -> key }) {
                 in this.records.indices -> {
-                    val oldValue = this.records[pos].second
+                    val (_, oldValue) = this.records[pos]
                     this.records[pos] = key to value
                     oldValue
                 }

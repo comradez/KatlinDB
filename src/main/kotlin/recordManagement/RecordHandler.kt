@@ -1,26 +1,33 @@
 package recordManagement
 
-import com.github.michaelbull.result.Ok
-import com.github.michaelbull.result.Result
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import pagedFile.BufferManager
-import utils.ErrorCode
 import utils.PAGE_HEADER_SIZE
 import utils.PAGE_SIZE
 
-class RecordHandler(_bufferManager: BufferManager) {
-    private val bufferManager = _bufferManager
-    private val openedFiles = mutableListOf<FileHandler>()
+private typealias Database = MutableMap<String, FileHandler> // table name => record file
+
+/**
+ * 更像是 RecordManager，RecordHandler 的工作实际由 [FileHandler] 完成
+ */
+class RecordHandler(
+    private val bufferManager: BufferManager,
+    private val workDir: String
+) {
+    private val databases = mutableMapOf<String, Database>()
+
+    private fun fileName(databaseName: String, tableName: String) =
+        "${this.workDir}/${databaseName}/${tableName}.table"
 
     /**
-     * @brief 依据文件名创建指定记录长度的文件
+     * 依据文件名创建指定记录长度的文件，
+     * 创建时会写入页头，并直接写回
      * @param fileName 文件名
      * @param recordLength 记录长度
-     * @return 是否创建成功
-     * @remark 创建时会打开文件并且写入页头
+     * @return 处理该文件的 [FileHandler]
      */
-    fun createFile(fileName: String, recordLength: Int): Boolean {
+    private fun createFile(fileName: String, recordLength: Int): FileHandler {
         if (bufferManager.createFile(fileName)) {
             val fileCreated = bufferManager.openFile(fileName)
             val headerPage = bufferManager.readPage(fileCreated, 0)
@@ -39,14 +46,18 @@ class RecordHandler(_bufferManager: BufferManager) {
                 .toByteArray()
                 .copyInto(headerPage) // 将元信息写入头部页
             bufferManager.markDirty(fileCreated, 0) // 标记写回
-            bufferManager.closeFile(fileCreated)
-            return true
+            return FileHandler(fileCreated, this.bufferManager)
         }
-        return false
+        error(fileName)
     }
 
+    fun createRecord(databaseName: String, tableName: String, recordLength: Int): FileHandler =
+        this.createFile(this.fileName(databaseName, tableName), recordLength).also {
+            this.databases.getOrPut(databaseName) { mutableMapOf() }[tableName] = it
+        }
+
     /**
-     * @brief 计算每页的记录数
+     * 计算每页的记录数
      * @param recordLength 每条记录的长度
      * @return 每页的记录数
      */
@@ -55,7 +66,7 @@ class RecordHandler(_bufferManager: BufferManager) {
     }
 
     /**
-     * @brief 计算位图字节数
+     * 计算位图字节数
      * @param slotPerPage 每页的记录数
      * @return 位图字节数
      */
@@ -64,37 +75,75 @@ class RecordHandler(_bufferManager: BufferManager) {
     }
 
     /**
-     * @brief 依据文件名删除文件
+     * 依据文件名删除文件
      * @param fileName 文件名
      * @return 是否删除成功
      */
-    fun removeFile(fileName: String): Boolean {
+    private fun removeFile(fileName: String): Boolean {
         return bufferManager.removeFile(fileName)
     }
 
     /**
-     * @brief 根据文件名打开文件，返回 FileHandler
+     * 根据文件名打开文件，返回 FileHandler
      * @param fileName 文件名
-     * @return 返回 Result，如果成功为处理该文件的 FileHandler，失败则为错误码
+     * @return 处理该文件的 [FileHandler]
      */
-    fun openFile(fileName: String): Result<FileHandler, ErrorCode> {
+    private fun openFile(fileName: String): FileHandler {
         val file = bufferManager.openFile(fileName)
-        val fileHandler = FileHandler(file, bufferManager)
-        openedFiles.add(fileHandler)
-        return Ok(fileHandler)
+        return FileHandler(file, bufferManager)
     }
 
     /**
-     * @brief 根据 FileHandler 关闭文件
+     * 打开 record 文件，返回 [FileHandler]
+     */
+    fun openRecord(databaseName: String, tableName: String): FileHandler =
+        this.databases
+            .getOrPut(databaseName) { mutableMapOf() }
+            .getOrPut(tableName) { this.openFile(this.fileName(databaseName, tableName)) }
+
+    fun renameRecord(databaseName: String, oldTableName: String, newTableName: String) {
+        this.databases[databaseName]?.remove(oldTableName)?.let { fileHandler ->
+            val file = fileHandler.file
+            if (fileHandler.configChanged) {
+                this.bufferManager.markDirty(file, 0)
+            }
+            this.bufferManager.renameFile(file, this.fileName(databaseName, newTableName))
+        }
+    }
+
+    /**
+     * 根据 FileHandler 关闭文件
      * @param fileHandler 待关闭文件的 Handler
      * @return 是否关闭成功
      */
-    fun closeFile(fileHandler: FileHandler): Boolean {
+    private fun closeFile(fileHandler: FileHandler): Boolean {
         val file = fileHandler.file
         if (fileHandler.configChanged) {
             bufferManager.markDirty(file, 0)
         } // 标记表头写回
         bufferManager.closeFile(file)
         return true
+    }
+
+    fun closeRecord(databaseName: String, tableName: String) {
+        this.databases[databaseName]?.remove(tableName)?.let {
+            this.closeFile(it)
+        }
+    }
+
+    fun removeRecord(databaseName: String, tableName: String) {
+        this.databases[databaseName]?.remove(tableName)?.let { fileHandler ->
+            val file = fileHandler.file
+            if (fileHandler.configChanged) {
+                this.bufferManager.markDirty(file, 0)
+            }
+            this.bufferManager.removeFile(this.fileName(databaseName, tableName))
+        }
+    }
+
+    fun closeDatabase(databaseName: String) {
+        this.databases.remove(databaseName)?.values?.forEach { fileHandler ->
+            this.closeFile(fileHandler)
+        }
     }
 }

@@ -3,7 +3,8 @@ package metaManagement.info
 import dataConverter.Converter
 import kotlinx.serialization.Serializable
 import recordManagement.Record
-import utils.ColumnExistError
+import utils.ColumnAlreadyExistsError
+import utils.ColumnNotExistsError
 import utils.InternalError
 
 @Serializable
@@ -11,16 +12,16 @@ class TableInfo(
     val name: String,
     private val _columns: List<ColumnInfo>
 ) {
-    private val columns = _columns.toMutableList()
+    val columns = _columns.toMutableList()
     var primary: List<String> = mutableListOf()
     val foreign = hashMapOf<String, Pair<String, String>>()
     val unique = hashSetOf<String>()
     val indices = hashMapOf<String, Int>()
 
     var columnMap = columns.associateBy { it.name }
-    private var sizeList = columns.map { it.getColumnSize() }
-    private var typeList = columns.map { it.type }
-    private var totalSize = sizeList.sum()
+    var sizeList = columns.map { it.getColumnSize() }
+    var typeList = columns.map { it.type }
+    var totalSize = sizeList.sum()
     private var columnIndices = columns.mapIndexed { i, column -> column.name to i }.toMap()
 
     private fun updateParams() {
@@ -55,36 +56,36 @@ class TableInfo(
 
     fun insertColumn(column: ColumnInfo) {
         if (column.name in columnMap.keys) {
-            throw ColumnExistError("Column ${column.name} already exists.")
+            throw ColumnAlreadyExistsError(this.name, column.name)
         }
         columns.add(column)
         updateParams()
     }
 
-    fun removeColumn(columnName: String) {
+    fun removeColumn(columnName: String): Int {
         if (columnName !in columnMap.keys) {
-            throw ColumnExistError("Column $columnName should exist.")
+            throw ColumnNotExistsError(this.name, columnName)
         }
-        columns.removeAt(columns.indexOfFirst { it.name == columnName })
+        return columns.indexOfFirst { it.name == columnName }.also { columns.removeAt(it) }
     }
 
-    fun addForeign(column: ColumnInfo, foreignInfo: Pair<String, String>) {
-        foreign[column.name] = foreignInfo
+    fun addForeign(columnName: String, foreignInfo: Pair<String, String>) {
+        foreign[columnName] = foreignInfo
     }
 
-    fun removeForeign(column: ColumnInfo) {
-        foreign.remove(column.name)
+    fun removeForeign(columnName: String) {
+        foreign.remove(columnName)
     }
 
-    fun addUnique(column: ColumnInfo) {
-        unique.add(column.name)
+    fun addUnique(columnName: String) {
+        unique.add(columnName)
     }
 
-    fun buildRecord(valueList: List<Any>): ByteArray {
+    fun buildRecord(valueList: List<Any?>): ByteArray {
         return Converter.encode(sizeList, typeList, totalSize, valueList)
     }
 
-    fun parseRecord(record: Record): List<Any> {
+    fun parseRecord(record: Record): List<Any?> {
         return Converter.decode(sizeList, typeList, totalSize, record)
     }
 
@@ -92,17 +93,21 @@ class TableInfo(
 
     fun getHeader() = columnMap.keys.map { "${name}.$it" }
 
-    fun existIndex(column: ColumnInfo) = column.name in indices.keys
+    fun existIndex(columnName: String) = columnName in indices.keys
 
-    fun createIndex(column: ColumnInfo, rootId: Int) {
-        if (column.name !in indices.keys) {
-            indices[column.name] = rootId
+    fun createIndex(columnName: String, rootId: Int) {
+        if (columnName !in indices.keys) {
+            indices[columnName] = rootId
         } else {
-            throw InternalError("Column ${column.name} already has an index.")
+            throw InternalError("Column $columnName already has an index.")
         }
     }
 
-    fun dropIndex(column: ColumnInfo) {
-        indices.remove(column.name)
+    fun renameIndex(oldName: String, newName: String) {
+        indices.remove(oldName)?.let { indices[newName] = it }
+    }
+
+    fun dropIndex(indexName: String) {
+        indices.remove(indexName)
     }
 }

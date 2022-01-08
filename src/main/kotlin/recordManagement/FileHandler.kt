@@ -14,6 +14,7 @@ class FileHandler(_file: File, _bufferManager: BufferManager) {
     private val bufferManager = _bufferManager
     private val config: HeaderPageConfig
     var configChanged = false
+
     init {
         val headerPage = bufferManager.readPage(file, 0)
         val headerString = headerPage
@@ -95,18 +96,17 @@ class FileHandler(_file: File, _bufferManager: BufferManager) {
     }
 
     /**
-     * @brief 根据指定 RID 获取一条记录的字节序列（如成功）或错误码（如失败）
+     * 根据指定 [RID] 获取一条记录的字节序列，
+     * 返回的是拷贝，无副作用
      * @param rid (页号, 槽号)，用于标识一条记录
-     * @return 返回一个Result，如成功内部为 Record 对象；如失败内部为错误状态码
-     * @remark 返回的是拷贝，无副作用
      */
-    fun getRecord(rid: RID): Result<Record, ErrorCode> {
+    fun getRecord(rid: RID): Record {
         val (pageId, slotId) = rid
         val page = bufferManager.readPage(file, pageId)
         val offset = PAGE_HEADER_SIZE + config.recordLength * slotId
         val buffer = ByteArray(config.recordLength)
         page.copyInto(buffer, 0, offset, offset + config.recordLength)
-        return Ok(Record(rid, buffer))
+        return Record(rid, buffer)
     }
 
     /**
@@ -160,11 +160,11 @@ class FileHandler(_file: File, _bufferManager: BufferManager) {
     }
 
     /**
-     * @brief 插入一条记录 buffer
+     * 插入一条记录
      * @param buffer 记录的字节序列
-     * @return 返回一个 Result，如成功返回代表插入位置的 RID ，如失败为内部为错误状态码
+     * @return 返回代表插入位置的 [RID]
      */
-    fun insertRecord(buffer: BufferType): Result<RID, ErrorCode> {
+    fun insertRecord(buffer: BufferType): RID {
         val rid = nextAvailableRID()
         val (pageId, slotId) = rid
         markOccupied(rid)
@@ -176,7 +176,7 @@ class FileHandler(_file: File, _bufferManager: BufferManager) {
         val offset = PAGE_HEADER_SIZE + config.recordLength * slotId
         buffer.copyInto(page, offset, 0, config.recordLength)
         bufferManager.markDirty(file, pageId)
-        return Ok(rid)
+        return rid
     }
 
     /**
@@ -204,7 +204,7 @@ class FileHandler(_file: File, _bufferManager: BufferManager) {
      * @return 包含该页中所有非空记录 RID 的列表
      */
     private fun getItemRIDsForPage(pageId: Int) = bufferManager
-        .readPage(file, pageId)
+        .readPage(file, pageId).asSequence()
         .take(config.bitMapLength)
         .map { getOnes(it) }
         .flatMapIndexed { i, list -> list.map { it + 8 * i } }
@@ -214,6 +214,6 @@ class FileHandler(_file: File, _bufferManager: BufferManager) {
      * @brief 返回表内所有非空记录的 RID
      * @return 包含该表中所有非空记录 RID 的列表
      */
-    fun getItemRIDs() = (1 until config.pageNumber) // Page 0 是表头
-            .flatMap { getItemRIDsForPage(it) }
+    fun getItemRIDs() = (1 until config.pageNumber).asSequence() // Page 0 是表头
+        .flatMap { getItemRIDsForPage(it) }
 }

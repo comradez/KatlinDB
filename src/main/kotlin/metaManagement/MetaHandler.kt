@@ -14,10 +14,10 @@ class MetaHandler(
     _dbName: String,
     _homeDirectory: String
 ) {
-    private val dbName = _dbName
+    val dbName = _dbName
     private val homeDirectory = _homeDirectory
     private val metaDirectory = "$homeDirectory/$dbName/$dbName.meta"
-    private lateinit var dbInfo: DatabaseInfo
+    lateinit var dbInfo: DatabaseInfo
     init {
         val metaFile = File(metaDirectory)
         if (metaFile.exists()) {
@@ -43,9 +43,8 @@ class MetaHandler(
         dump()
     }
 
-    fun removeColumn(tableName: String, columnName: String) {
-        dbInfo.removeColumn(tableName, columnName)
-        dump()
+    fun removeColumn(tableName: String, columnName: String): Int {
+        return dbInfo.removeColumn(tableName, columnName).also { dump() }
     }
 
     fun getColumn(tableName: String, columnName: String): ColumnInfo {
@@ -88,21 +87,21 @@ class MetaHandler(
         table.primary = mutableListOf()
     }
 
-    fun addForeign(tableName: String, column: ColumnInfo, foreign: Pair<String, String>) {
+    fun addForeign(tableName: String, columnName: String, foreign: Pair<String, String>) {
         val table = dbInfo.tableMap[tableName] ?: throw InternalError("No table $tableName in database $dbName found.")
-        table.addForeign(column, foreign)
+        table.addForeign(columnName, foreign)
         dump()
     }
 
-    fun removeForeign(tableName: String, column: ColumnInfo) {
+    fun removeForeign(tableName: String, columnName: String) {
         val table = dbInfo.tableMap[tableName] ?: throw InternalError("No table $tableName in database $dbName found.")
-        table.removeForeign(column)
+        table.removeForeign(columnName)
         dump()
     }
 
-    fun addUnique(tableName: String, column: ColumnInfo) {
+    fun addUnique(tableName: String, columnName: String) {
         val table = dbInfo.tableMap[tableName] ?: throw InternalError("No table $tableName in database $dbName found.")
-        table.addUnique(column)
+        table.addUnique(columnName)
     }
 
     fun renameTable(tableName: String, newTableName: String) {

@@ -1,8 +1,8 @@
 package pagedFile
 
+import utils.BufferType
 import utils.MAX_FILE_NUMBER
 import utils.PAGE_SHIFT
-import utils.BufferType
 import utils.PAGE_SIZE
 import java.io.File
 import java.io.RandomAccessFile
@@ -29,7 +29,7 @@ class FileManager {
         val fileId = fileTable.indexOf(null)
         if (fileId != -1) { // 还有剩余空间
             val file = File(fileName)
-            if (file.exists() && file.isFile && file.canWrite() && file.canRead())  {
+            if (file.exists() && file.isFile && file.canWrite() && file.canRead()) {
                 fileTable[fileId] = file
                 return file
             }
@@ -44,6 +44,11 @@ class FileManager {
     fun closeFile(file: File) {
         val fileId = fileTable.indexOf(file)
         fileTable[fileId] = null
+    }
+
+    fun renameFile(file: File, newName: String): Boolean {
+        this.closeFile(file)
+        return file.renameTo(File(newName))
     }
 
     /**
@@ -95,7 +100,7 @@ class FileManager {
      * @param file 文件对象
      * @return 新添加空白页的页号
      */
-    fun freshPage(file: File) : Int {
+    fun freshPage(file: File): Int {
         val randomAccessFile = RandomAccessFile(file, "rw")
         val offset = randomAccessFile.length()
         randomAccessFile.setLength(offset + PAGE_SIZE)
