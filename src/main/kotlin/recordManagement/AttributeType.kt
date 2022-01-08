@@ -11,7 +11,7 @@ enum class AttributeType {
 
 fun buildAttributeType(type: String): AttributeType {
     return when (type.uppercase()) {
-        "LONG" -> AttributeType.LONG
+        "DATE" -> AttributeType.LONG
         "INT" -> AttributeType.INT
         "FLOAT" -> AttributeType.FLOAT
         "VARCHAR" -> AttributeType.STRING

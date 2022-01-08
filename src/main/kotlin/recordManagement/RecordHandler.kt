@@ -33,6 +33,7 @@ class RecordHandler(
             val headerPage = bufferManager.readPage(fileCreated, 0)
             val slotPerPage = acquireSlotPerPage(recordLength)
             val bitMapLength = acquireBitMapLength(slotPerPage)
+//            println("File is $fileName, slotNumber is $slotPerPage, bitMapLength is $bitMapLength")
             assert(bitMapLength + 4 <= PAGE_HEADER_SIZE) // 确保这东西 header 装得下
             val headerPageConfig = HeaderPageConfig(
                 recordLength,

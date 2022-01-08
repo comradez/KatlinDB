@@ -1,5 +1,6 @@
 package systemManagement
 
+import dataConverter.Converter
 import indexManagement.IndexManager
 import metaManagement.MetaHandler
 import metaManagement.MetaManager
@@ -16,6 +17,9 @@ import recordManagement.CompareOp
 import recordManagement.RecordHandler
 import utils.*
 import java.io.File
+import java.io.FileWriter
+import java.io.PrintWriter
+import java.sql.Date
 import java.util.*
 import kotlin.math.max
 import kotlin.math.min
@@ -76,11 +80,37 @@ class SystemManager(private val workDir: String) {
     }
 
     fun load(filename: String, tableName: String) {
-        TODO()
+        val file = File(filename)
+        val (_, tableInfo) = this.selectTable(tableName)
+        val types = tableInfo.columnIndices.map { (_, columnIndex) -> tableInfo.columns[columnIndex].type }
+        if (file.exists() && file.isFile) {
+            val lines = file.readLines()
+            for (line in lines) {
+                val pieces = line.split(',')
+                val dataForInsert = (pieces zip types).map { (piece, type) -> Converter.convertFromString(piece, type) }
+                insertRecord(tableName, dataForInsert)
+            }
+        } else {
+            throw InternalError("Target doesn't exist or is not a file.")
+        }
     }
 
     fun dump(filename: String, tableName: String) {
-        TODO()
+        val file = File(filename)
+        val (metaHandler, tableInfo) = this.selectTable(tableName)
+        val types = tableInfo.columnIndices.map { (_, columnIndex) -> tableInfo.columns[columnIndex].type }
+        if (!file.exists()) {
+            file.createNewFile()
+            val writer = FileWriter(filename, true)
+            val records = selectRecords(metaHandler, tableInfo, listOf())
+            for ((_, record) in records) {
+                val dataForDump = (record zip types).joinToString(",") { (data, type) -> Converter.convertToString(data, type) }
+                writer.write(dataForDump + "\n")
+            }
+            writer.close()
+        } else {
+            throw InternalError("Target already exists.")
+        }
     }
 
     fun showDatabases(): List<String> = this.databases.toList()
@@ -220,8 +250,8 @@ class SystemManager(private val workDir: String) {
         tableNames: List<String>,
         conditions: List<Condition> = listOf(),
         groupBy: Pair<String, String>? = null,
-        limit: Int = -1,
-        offset: Int = -1
+        limit: Int? = null,
+        offset: Int? = null
     ): QueryResult {
         TODO()
     }
@@ -416,7 +446,7 @@ class SystemManager(private val workDir: String) {
         metaHandler: MetaHandler,
         tableInfo: TableInfo,
         conditions: List<Condition>
-    ): Set<RID> {
+    ): Sequence<RID> {
         val ranges = mutableMapOf<String, Pair<Int, Int>>()
         conditions.asSequence()
             .filter { condition -> condition.tableName == tableInfo.name }
@@ -479,7 +509,10 @@ class SystemManager(private val workDir: String) {
             )
             val (l, r) = boundary
             index.get(l, r).toSet()
-        }.reduceOrNull(Set<RID>::intersect).orEmpty()
+        }.reduceOrNull(Set<RID>::intersect)?.asSequence() ?: run {
+            val record = this.recordHandler.openRecord(metaHandler.dbName, tableInfo.name)
+            record.getItemRIDs()
+        }
     }
 
     private fun selectRecords(
@@ -488,7 +521,9 @@ class SystemManager(private val workDir: String) {
         conditions: List<Condition>
     ): Sequence<Pair<RID, List<Any?>>> {
         val record = this.recordHandler.openRecord(metaHandler.dbName, tableInfo.name)
-        val values = this.selectIndices(metaHandler, tableInfo, conditions).asSequence()
+        val test = selectIndices(metaHandler, tableInfo, conditions).toList()
+        println(test.size)
+        val values = this.selectIndices(metaHandler, tableInfo, conditions)
             .map { rid -> rid to tableInfo.parseRecord(record.getRecord(rid)) }
         val predicates = conditions.map { condition ->
             val columnIndex = tableInfo.getColumnIndex(condition.columnName)

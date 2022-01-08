@@ -73,10 +73,14 @@ class FileHandler(_file: File, _bufferManager: BufferManager) {
      * @param pageId 页编号
      * @return 如页满，为 true；否则为 false
      */
-    private fun checkPageFull(pageId: Int) = bufferManager
+    private fun checkPageFull(pageId: Int): Boolean {
+        val bitMap = bufferManager
             .readPage(file, pageId) // 取出 page
             .sliceArray(0 until config.bitMapLength) // 取出 BitMap 部分
-            .all { it == 0xFF.toByte() } // 查看是否全1
+        val firstZeroPos = firstZero(bitMap.last())
+        val offset = if (firstZeroPos >= 0) { firstZeroPos } else { 8 }
+        return 8 * (bitMap.size - 1) + offset == config.slotPerPage
+    }
 
     /**
      * @brief 获得指定页面中第一条空闲的 RID
@@ -132,6 +136,7 @@ class FileHandler(_file: File, _bufferManager: BufferManager) {
      * @return RID
      */
     private fun nextAvailableRID(): RID {
+//        println("nextAvailablePage is ${config.nextAvailablePage}")
         return if (config.nextAvailablePage == config.pageNumber) { // 所有已有页面都分配完了
             RID(createPage(), 0)
         } else {
@@ -146,12 +151,14 @@ class FileHandler(_file: File, _bufferManager: BufferManager) {
     private fun createPage(): Int {
         val pageId = config.pageNumber
         config.pageNumber += 1
+//        println("create page $pageId, nextAvailablePage is ${config.nextAvailablePage}, there are ${config.pageNumber} pages.")
         if (pageId != config.nextAvailablePage) { // 前面有其他的未满页面
             updateNextIdlePage(pageId, config.nextAvailablePage)
             config.nextAvailablePage = pageId
             // 把当前页面插入到链表头
         } else { // 所有前面的页面都已经填满了
             updateNextIdlePage(pageId, config.pageNumber)
+//            config.nextAvailablePage
             // 不用对链表做额外修改，只需要将自己的 nextPage 指向下一个可分配页号即可
         }
         configChanged = true
@@ -167,10 +174,12 @@ class FileHandler(_file: File, _bufferManager: BufferManager) {
     fun insertRecord(buffer: BufferType): RID {
         val rid = nextAvailableRID()
         val (pageId, slotId) = rid
+//        println("file is ${file.name}, recordLength is ${config.recordLength}, pageId is $pageId, slotId is $slotId")
         markOccupied(rid)
         val page = bufferManager.readPage(file, pageId)
         if (checkPageFull(pageId)) { // 之前不满，现在满了
             config.nextAvailablePage = readIntFromByteArray(page, config.bitMapLength)
+//            println("page full! nextAvailablePage is ${config.nextAvailablePage}")
             configChanged = true
         }
         val offset = PAGE_HEADER_SIZE + config.recordLength * slotId

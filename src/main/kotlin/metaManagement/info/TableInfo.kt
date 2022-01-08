@@ -22,7 +22,7 @@ class TableInfo(
     var sizeList = columns.map { it.getColumnSize() }
     var typeList = columns.map { it.type }
     var totalSize = sizeList.sum()
-    private var columnIndices = columns.mapIndexed { i, column -> column.name to i }.toMap()
+    var columnIndices = columns.mapIndexed { i, column -> column.name to i }.toMap()
 
     private fun updateParams() {
         columnMap = columns.associateBy { it.name }

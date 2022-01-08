@@ -2,6 +2,9 @@ package utils
 
 import java.lang.Float.floatToIntBits
 import java.lang.Float.intBitsToFloat
+import java.lang.Integer.min
+import java.nio.ByteBuffer
+import java.nio.charset.Charset
 import kotlin.experimental.and
 
 typealias BufferType = ByteArray
@@ -10,7 +13,7 @@ typealias RID = Pair<Int, Int> // (pageId, slotId)
 
 const val PAGE_NUMBER = 60000 // 缓冲区内总页数
 const val MAX_FILE_NUMBER = 128 // 支持同时打开的文件个数
-const val PAGE_SHIFT = 8 // 页面大小的 log2 值
+const val PAGE_SHIFT = 13 // 页面大小的 log2 值
 const val PAGE_SIZE = 1 shl PAGE_SHIFT // 页面大小
 const val PAGE_HEADER_SIZE = 64 // 每页的页头大小
 
@@ -22,7 +25,7 @@ const val PAGE_HEADER_SIZE = 64 // 每页的页头大小
  */
 fun writeIntToByteArray(data: Int, array: ByteArray, offset: Int = 0) {
     for (i in 0 until 4) {
-        array[offset + i] = ((data shr i) and 0xFF).toByte()
+        array[offset + i] = ((data shr (8 * i)) and 0xFF).toByte()
     }
 }
 
@@ -33,7 +36,7 @@ fun writeIntToByteArray(data: Int, array: ByteArray, offset: Int = 0) {
  * @return 读取到的 32 位整数
  */
 fun readIntFromByteArray(array: ByteArray, offset: Int = 0): Int {
-    return (0 until 4).sumOf { array[offset + it].toInt() shl (8 * it) }
+    return (0 until 4).sumOf { array[offset + it].toUByte().toInt() shl (8 * it) }
 }
 
 fun writeFloatToByteArray(data: Float, array: ByteArray, offset: Int = 0) {
@@ -47,28 +50,14 @@ fun writeStringToByteArray(data: String, array: ByteArray, offset: Int = 0) {
     if (data.length > 256) {
         throw InternalError("String $data length ${data.length}, expected <= 256")
     }
-    for (i in 0..255) {
-        array[offset + i] = if (i < data.length) {
-            data[i].code.toByte()
-        } else {
-            0
-        }
-    }
+    data.toByteArray(Charset.forName("ASCII")).copyInto(array, offset)
+    println("Input data is $data")
+    println("Input offset is $offset")
 }
 
 fun readStringFromByteArray(array: ByteArray, offset: Int = 0, size: Int?): String {
-    val zeroIndex = (0..255)
-        .map { array[offset + it] == 0.toByte() }
-        .indexOf(true)
-    val stringLength = if (zeroIndex != -1) { zeroIndex } else { 256 }
-    if (size != null) {
-        assert(size == stringLength)
-    }
-    val byteArray = ByteArray(stringLength)
-    (0 until stringLength).forEach {
-        byteArray[it] = array[offset + it]
-    }
-    return byteArray.toString()
+    val bytes = array.copyInto(ByteArray(256), 0, offset, min(offset + (size ?: 256), array.size))
+    return bytes.toString(Charset.forName("ASCII")).trim { it.code == 0 }
 }
 
 fun writeLongToByteArray(data: Long, array: ByteArray, offset: Int = 0) {

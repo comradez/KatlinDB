@@ -3,6 +3,7 @@ package dataConverter
 import recordManagement.AttributeType
 import recordManagement.Record
 import utils.*
+import java.sql.Date
 
 class Converter {
     companion object Static {
@@ -27,6 +28,9 @@ class Converter {
                     AttributeType.STRING -> writeStringToByteArray(value as String? ?: "", record, offset)
                     AttributeType.LONG -> writeLongToByteArray(value as Long? ?: Long.MIN_VALUE, record, offset)
                 }
+                if (type == AttributeType.STRING) {
+                    println("string is: `${readStringFromByteArray(record, offset, size)}`")
+                }
                 offset += size
             }
             assert(offset == totalSize)
@@ -50,6 +54,24 @@ class Converter {
             }
             assert(offset == totalSize)
             return list
+        }
+
+        fun convertFromString(input: String, type: AttributeType): Any {
+            return when (type) {
+                AttributeType.INT -> input.toInt()
+                AttributeType.FLOAT -> input.toFloat()
+                AttributeType.STRING -> input
+                AttributeType.LONG -> Date.valueOf(input)
+            }
+        }
+
+        fun convertToString(value: Any?, type: AttributeType): String {
+            return when (type) {
+                AttributeType.INT -> (value as Int?)?.toString() ?: "NULL"
+                AttributeType.FLOAT -> (value as Float?)?.toString() ?: "NULL"
+                AttributeType.STRING -> (value as String?)?.toString() ?: "NULL"
+                AttributeType.LONG -> if (value != null) { Date(value as Long).toString() } else { "NULL" }
+            }
         }
     }
 }

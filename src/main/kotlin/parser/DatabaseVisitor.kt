@@ -110,13 +110,13 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
     override fun visitLoad_data(ctx: SQLParser.Load_dataContext?) {
         val filename = ctx!!.String().toString()
         val tableName = ctx.Identifier().toString()
-        manager.load(filename, tableName)
+        manager.load(filename.substring(1 until filename.lastIndex), tableName)
     }
 
     override fun visitDump_data(ctx: SQLParser.Dump_dataContext?) {
         val filename = ctx!!.String().toString()
         val tableName = ctx.Identifier().toString()
-        manager.dump(filename, tableName)
+        manager.dump(filename.substring(1 until filename.lastIndex), tableName)
     }
 
     override fun visitCreate_table(ctx: SQLParser.Create_tableContext?) {
@@ -186,12 +186,12 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
             val groupByTemp = ctx.column().accept(this)
             (groupByTemp as Pair<*, *>).first as String to groupByTemp.second as String
         } else { null }
-        val (limit, offset) = if (ctx.Integer().size > 0) {
-            println("ctx.Integer() is ${ctx.Integer().toString()}")
-            ctx.Integer(0).toString().toInt() to ctx.Integer(1).toString().toInt()
-        } else {
-            -1 to -1
+        val (limit, offset) = when (ctx.Integer().size) {
+            2 -> ctx.Integer(0).toString().toInt() to ctx.Integer(1).toString().toInt()
+            1 -> ctx.Integer(0).toString().toInt() to null
+            else -> null to null
         }
+
         return manager.selectRecords(
             selectors,
             tableNames,
@@ -259,7 +259,8 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
 
     override fun visitField_list(ctx: SQLParser.Field_listContext?)
     : Triple<List<ColumnInfo>, HashMap<String, Pair<String, String>>, List<String>?> {
-        val nameToColumn = hashMapOf<String, ColumnInfo>()
+        val nameSet = mutableSetOf<String>()
+        val columns = mutableListOf<ColumnInfo>()
         val foreignKeys = hashMapOf<String, Pair<String, String>>()
         var primaryKey: List<String>? = null
         for (field in ctx!!.field()) {
@@ -272,7 +273,9 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
                     // 实际上是 Pair<AttributeType, Int>
                     val type = _type as AttributeType
                     val size = _size as Int
-                    nameToColumn[name] = ColumnInfo(type, name, size)
+                    nameSet.add(name)
+                    columns.add(ColumnInfo(type, name, size))
+//                    nameToColumn[name] = ColumnInfo(type, name, size)
                 }
                 is SQLParser.Primary_key_fieldContext -> {
                     val nameList = mutableListOf<String>()
@@ -281,7 +284,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
                     // 实际上是 List<String>
                     for (name in names) {
                         val name = name as String
-                        if (name !in nameToColumn.keys) {
+                        if (name !in nameSet) {
                             throw InternalError("field $name not found.")
                         }
                     }
@@ -306,7 +309,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
                 else -> throw InternalError("An abstract field node is not allowed")
             }
         }
-        return Triple(nameToColumn.values.toList(), foreignKeys, primaryKey)
+        return Triple(columns, foreignKeys, primaryKey)
     }
 
     override fun visitNormal_field(ctx: SQLParser.Normal_fieldContext?): ColumnInfo {
