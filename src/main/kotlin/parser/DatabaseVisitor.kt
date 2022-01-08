@@ -67,7 +67,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
     }
 
     override fun visitStatement(ctx: SQLParser.StatementContext?): Any {
-        return if (ctx!!.db_statement() != null) {
+         return if (ctx!!.db_statement() != null) {
             ctx.db_statement().accept(this) // Unit 或者 QueryResult
         } else if (ctx.io_statement() != null) {
             ctx.io_statement().accept(this) // 还没实现
@@ -91,7 +91,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
     }
 
     override fun visitShow_dbs(ctx: SQLParser.Show_dbsContext?): QueryResult {
-        return SuccessResult(listOf("databases"), listOf(manager.showDatabases().toList()))
+        return SuccessResult(listOf("databases"), manager.showDatabases().map { listOf(it) })
     }
 
     override fun visitUse_db(ctx: SQLParser.Use_dbContext?) {
@@ -99,11 +99,11 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
     }
 
     override fun visitShow_tables(ctx: SQLParser.Show_tablesContext?): QueryResult {
-        return SuccessResult(listOf("tables"), listOf(manager.showTables()))
+        return SuccessResult(listOf("tables"), manager.showTables().map { listOf(it) })
     }
 
     override fun visitShow_indexes(ctx: SQLParser.Show_indexesContext?): QueryResult {
-        return SuccessResult(listOf("indices"), listOf(manager.showIndices()))
+        return SuccessResult(listOf("indices"), manager.showIndices().map { listOf(it) })
     }
 
     override fun visitLoad_data(ctx: SQLParser.Load_dataContext?) {
@@ -125,10 +125,10 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val primaryKey = (_primaryKey as List<*>?)?.map { it as String }.orEmpty()
         val tableName = ctx.Identifier().toString()
         manager.createTable(TableInfo(tableName, columns))
-        for ((_columnInfo, _columnMessage) in foreignKeys) {
-            val columnInfo = _columnInfo as ColumnInfo
+        for ((_columnName, _columnMessage) in foreignKeys) {
+            val columnName = _columnName as String
             val columnMessage = (_columnMessage as Pair<*, *>).first as String to _columnMessage.second as String
-            manager.addForeign(tableName, columnInfo.name, columnMessage)
+            manager.addForeign(tableName, columnName, columnMessage)
         }
         manager.setPrimary(tableName, primaryKey)
     }
@@ -179,13 +179,14 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
 
     override fun visitSelect_table(ctx: SQLParser.Select_tableContext?): QueryResult {
         val tableNames = (ctx!!.identifiers().accept(this) as List<*>).map { it as String }
-        val conditions = (ctx.where_and_clause().accept(this) as List<*>).map { it as Condition }
+        val conditions = (ctx.where_and_clause()?.accept(this) as List<*>?)?.map { it as Condition }.orEmpty()
         val selectors = (ctx.selectors().accept(this) as List<*>).map { it as Selector }
         val groupBy = if (ctx.column() != null) {
             val groupByTemp = ctx.column().accept(this)
             (groupByTemp as Pair<*, *>).first as String to groupByTemp.second as String
         } else { null }
-        val (limit, offset) = if (ctx.Integer() != null) {
+        val (limit, offset) = if (ctx.Integer().size > 0) {
+            println("ctx.Integer() is ${ctx.Integer().toString()}")
             ctx.Integer(0).toString().toInt() to ctx.Integer(1).toString().toInt()
         } else {
             -1 to -1
@@ -243,7 +244,6 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val columnNames = (ctx.identifiers(0).accept(this) as List<*>).map { it as String }
         val referNames = (ctx.identifiers(1).accept(this) as List<*>).map { it as String }
         for ((columnName, referName) in columnNames zip referNames) {
-            print("$columnName, $referName")
             manager.addForeign(tableName, columnName, foreignTableName to referName)
         }
     }
@@ -375,7 +375,8 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val (_tableName, _columnName) = ctx!!.column().accept(this) as Pair<*, *>
         val tableName = _tableName as String?
         val columnName = _columnName as String
-        val operator = buildCompareOp(ctx.operator_().toString())
+        val operator = ctx.operator_().accept(this) as CompareOp
+//        val operator = buildCompareOp(ctx.operator_().toString())
         val value = ctx.expression().accept(this)!!
         return Condition(tableName, columnName, CompareWith(operator, value))
     }
@@ -384,7 +385,8 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val (_tableName, _columnName) = ctx!!.column().accept(this) as Pair<*, *>
         val tableName = _tableName as String?
         val columnName = _columnName as String
-        val operator = buildCompareOp(ctx.operator_().toString())
+        val operator = ctx.operator_().accept(this) as CompareOp
+//        val operator = buildCompareOp(ctx.operator_().toString())
         val result = ctx.select_table().accept(this) as SuccessResult
         val value = manager.resultToValue(result, false)
         return Condition(tableName, columnName, CompareWith(operator, value))
@@ -479,10 +481,38 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
     }
 
     override fun visitOperator_(ctx: SQLParser.Operator_Context?): CompareOp {
-        return buildCompareOp(ctx!!.toString())
+        return if (ctx!!.Greater() != null) {
+            CompareOp.GT_OP
+        } else if (ctx.Less() != null) {
+            CompareOp.LT_OP
+        } else if (ctx.GreaterEqual() != null) {
+            CompareOp.GE_OP
+        } else if (ctx.LessEqual() != null) {
+            CompareOp.LE_OP
+        } else if (ctx.EqualOrAssign() != null) {
+            CompareOp.EQ_OP
+        } else if (ctx.NotEqual() != null) {
+            CompareOp.NE_OP
+        } else {
+            throw InternalError("Bad Operator")
+        }
+//        return buildCompareOp(ctx!!.toString())
     }
 
     override fun visitAggregator(ctx: SQLParser.AggregatorContext?): AggregationSelector.Aggregator {
-        return buildAggregator(ctx!!.toString())
+        return if (ctx!!.Sum() != null) {
+            AggregationSelector.Aggregator.SUM
+        } else if (ctx.Min() != null) {
+            AggregationSelector.Aggregator.MIN
+        } else if (ctx.Max() != null) {
+            AggregationSelector.Aggregator.MAX
+        } else if (ctx.Average() != null) {
+            AggregationSelector.Aggregator.AVERAGE
+        } else if (ctx.Count() != null) {
+            AggregationSelector.Aggregator.COUNT
+        } else {
+            throw InternalError("Bad Aggregator")
+        }
+//        return buildAggregator(ctx!!.toString())
     }
 }

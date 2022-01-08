@@ -4,9 +4,18 @@ import org.sk.PrettyTable
 
 abstract class QueryResult(
     val headers: List<String>?,
-    val data: List<List<String>>?
+    val data: List<List<Any?>>?
 ) {
     var timeCost: Long? = null
+    init {
+        if (headers == null) {
+            assert(data == null)
+        } else {
+            for (line in data!!) {
+                assert(line.size == headers.size)
+            }
+        }
+    }
 
     fun outputTable(): String? {
         if (headers == null || data == null) {
@@ -14,7 +23,8 @@ abstract class QueryResult(
         }
         val prettyTable = PrettyTable(*headers.toTypedArray())
         for (line in data) {
-            prettyTable.addRow(*line.toTypedArray())
+            val lineArray = line.map { it.toString() }.toTypedArray()
+            prettyTable.addRow(*lineArray)
         }
         return prettyTable.toString()
     }

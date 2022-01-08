@@ -15,7 +15,7 @@ import recordManagement.RecordHandler
 import utils.*
 import java.io.File
 
-open class SystemManager(private val workDir: String) {
+class SystemManager(private val workDir: String) {
     init {
         with(File(workDir)) {
             this.mkdirs()
@@ -122,9 +122,11 @@ open class SystemManager(private val workDir: String) {
 
     fun showTables(): List<String> =
         File(this.databasePath(this.selectedDatabase ?: throw NoUsingDatabaseError()))
-            .list { file, _ -> file.extension == "table" }
+            .list { _, name -> name.substringAfterLast('.', "") == "table" }
             .orEmpty()
             .toList()
+            .map { it.substringBeforeLast('.', "") }
+            .also { println("table num: ${it.size}") }
 
     fun createTable(info: TableInfo) {
         val metaHandler = this.selectedDatabaseMeta

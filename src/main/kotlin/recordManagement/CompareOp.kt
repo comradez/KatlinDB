@@ -20,6 +20,7 @@ enum class CompareOp {
 }
 
 fun buildCompareOp(compareOp: String): CompareOp {
+    println("compareOp is $compareOp")
     return when (compareOp) {
         "=" -> CompareOp.EQ_OP
         "<" -> CompareOp.LT_OP

@@ -9,13 +9,13 @@ import java.io.File
 import java.util.*
 
 fun enterCommandLineEnvironment(workDir: String) {
-//    val manager = SystemManager(workDir)
+    val manager = SystemManager(workDir)
     val scanner = Scanner(System.`in`)
     var command: String
     var nextLine: String
     while (true) {
         command = ""
-//        println("[DataBase: ${manager.selectedDatabase ?: "None"}]")
+        println("[DataBase: ${manager.selectedDatabase ?: "None"}]")
         print(">>> ")
         do {
             try {
@@ -32,9 +32,9 @@ fun enterCommandLineEnvironment(workDir: String) {
         if (command.trim(';').trim().lowercase() == "exit") {
             break
         }
-//        val results = manager.execute(command)
-//        assert(results.size == 1)
-//        showResult(results[0])
+        val results = manager.execute(command)
+        assert(results.size == 1)
+        showResult(results[0])
     }
 }
 
