@@ -8,7 +8,8 @@ import recordManagement.buildAttributeType
 import recordManagement.buildCompareOp
 import systemManagement.*
 import utils.InternalError
-import java.lang.Exception
+import utils.NestedSelectError
+import utils.trimListToPrint
 
 @Suppress("NAME_SHADOWING")
 class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>() {
@@ -319,7 +320,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
     }
 
     override fun visitPrimary_key_field(ctx: SQLParser.Primary_key_fieldContext?): List<*> {
-       return ctx!!.identifiers().accept(this)!! as List<*>
+        return ctx!!.identifiers().accept(this)!! as List<*>
         // 其实是 List<String>
     }
 
@@ -388,7 +389,9 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val operator = ctx.operator_().accept(this) as CompareOp
 //        val operator = buildCompareOp(ctx.operator_().toString())
         val result = ctx.select_table().accept(this) as SuccessResult
-        val value = manager.resultToValue(result, false)
+        val values = result.toColumnForOuterSelect().toList()
+        val value = values.singleOrNull()
+            ?: throw NestedSelectError("One value expected, got ${trimListToPrint(values, 3)}")
         return Condition(tableName, columnName, CompareWith(operator, value))
     }
 
@@ -417,7 +420,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val tableName = _tableName as String?
         val columnName = _columnName as String
         val result = ctx.select_table().accept(this) as SuccessResult
-        val value = manager.resultToValue(result, true) as List<Any?>
+        val value = result.toColumnForOuterSelect().toList()
         // 这个 value 是 select 出的结果，必须得是 List 才可以，不然不能 existIn
         return Condition(tableName, columnName, ExistsIn(value))
     }

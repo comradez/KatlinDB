@@ -35,4 +35,6 @@ class NotForeignKeyColumnError(tableName: String, columnName: String) :
 class TypeMismatchError(value: Any?) :
     Exception("Type of `${value}` mismatched.")
 
+class NestedSelectError(override val message: String) : Exception(message)
+
 class InternalError(override val message: String) : Exception(message)

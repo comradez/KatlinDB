@@ -6,17 +6,11 @@ import recordManagement.CompareOp
 import utils.TypeMismatchError
 
 abstract class Predicate {
-    abstract fun filter(
-        rows: Sequence<List<Any?>>,
-        column: Pair<Int, ColumnInfo>
-    ): Sequence<List<Any?>>
+    abstract fun build(column: Pair<Int, ColumnInfo>): (List<Any?>) -> Boolean
 }
 
 class CompareWith(val op: CompareOp, val rhs: Any) : Predicate() {
-    override fun filter(
-        rows: Sequence<List<Any?>>,
-        column: Pair<Int, ColumnInfo>
-    ): Sequence<List<Any?>> {
+    override fun build(column: Pair<Int, ColumnInfo>): (List<Any?>) -> Boolean {
         val (columnIndex, columnInfo) = column
         val compareToRhs: (List<Any?>) -> Int = when (columnInfo.type) {
             AttributeType.LONG -> when (rhs) {
@@ -46,20 +40,16 @@ class CompareWith(val op: CompareOp, val rhs: Any) : Predicate() {
             }
         }
         val map = this.op.map()
-        val predicate: (List<Any?>) -> Boolean = { row -> compareToRhs(row).let(map) }
-        return rows.filter(predicate)
+        return { row -> compareToRhs(row).let(map) }
     }
 }
 
 class ExistsIn(_values: List<Any?>) : Predicate() {
     val values = _values.toSet()
 
-    override fun filter(
-        rows: Sequence<List<Any?>>,
-        column: Pair<Int, ColumnInfo>
-    ): Sequence<List<Any?>> {
+    override fun build(column: Pair<Int, ColumnInfo>): (List<Any?>) -> Boolean {
         val (columnIndex, _) = column
-        return rows.filter { row -> row[columnIndex] in this.values }
+        return { row -> row[columnIndex] in this.values }
     }
 }
 
@@ -81,35 +71,26 @@ class HasPattern(_pattern: String) : Predicate() {
         Regex("^${pattern}$")
     }
 
-    override fun filter(
-        rows: Sequence<List<Any?>>,
-        column: Pair<Int, ColumnInfo>
-    ): Sequence<List<Any?>> {
+    override fun build(column: Pair<Int, ColumnInfo>): (List<Any?>) -> Boolean {
         val (columnIndex, columnInfo) = column
         if (columnInfo.type != AttributeType.STRING) {
             throw TypeMismatchError(columnInfo.name)
         }
-        return rows.filter { row -> this.pattern.matches(row[columnIndex] as String) }
+        return { row -> this.pattern.matches(row[columnIndex] as String) }
     }
 }
 
 class IsNull : Predicate() {
-    override fun filter(
-        rows: Sequence<List<Any?>>,
-        column: Pair<Int, ColumnInfo>
-    ): Sequence<List<Any?>> {
+    override fun build(column: Pair<Int, ColumnInfo>): (List<Any?>) -> Boolean {
         val (columnIndex, _) = column
-        return rows.filter { row -> row[columnIndex] == null }
+        return { row -> row[columnIndex] == null }
     }
 }
 
 class IsNotNull : Predicate() {
-    override fun filter(
-        rows: Sequence<List<Any?>>,
-        column: Pair<Int, ColumnInfo>
-    ): Sequence<List<Any?>> {
+    override fun build(column: Pair<Int, ColumnInfo>): (List<Any?>) -> Boolean {
         val (columnIndex, _) = column
-        return rows.filter { row -> row[columnIndex] != null }
+        return { row -> row[columnIndex] != null }
     }
 }
 

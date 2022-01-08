@@ -80,7 +80,7 @@ class Index(
         abstract fun put(key: Int, value: RID): RID?
         abstract fun remove(key: Int): RID?
         abstract fun get(key: Int): RID?
-        abstract fun get(low: Int, high: Int): List<RID>
+        abstract fun get(low: Int, high: Int): Sequence<RID>
 
         abstract fun load()
         open fun dump() {
@@ -198,12 +198,12 @@ class Index(
             return this.children[pos].second.get(key)
         }
 
-        override fun get(low: Int, high: Int): List<RID> {
+        override fun get(low: Int, high: Int): Sequence<RID> {
             val l = when (val pos = this.children.binarySearchBy(low) { (key, _) -> key }) {
                 in this.children.indices -> pos // low == key[pos]
                 else -> when (val pos = -pos - 1) {
                     in this.children.indices -> pos // key[pos - 1] < low < key[pos]
-                    else -> return listOf() // max{key} < low
+                    else -> return sequenceOf() // max{key} < low
                 }
             }
             val r = when (val pos = this.children.binarySearchBy(high) { (key, _) -> key }) {
@@ -214,7 +214,7 @@ class Index(
                 }
             }
             return this.children
-                .slice(l..r)
+                .slice(l..r).asSequence()
                 .flatMap { (_, child) -> child.get(low, high) }
         }
 
@@ -325,7 +325,7 @@ class Index(
                 else -> null
             }
 
-        override fun get(low: Int, high: Int): List<RID> {
+        override fun get(low: Int, high: Int): Sequence<RID> {
             val l = when (val pos = this.records.binarySearchBy(low) { (key, _) -> key }) {
                 in this.records.indices -> pos
                 else -> -pos
@@ -334,7 +334,7 @@ class Index(
                 in this.records.indices -> pos
                 else -> -pos - 1
             }
-            return this.records.slice(l until r).map { (_, rid) -> rid }
+            return this.records.slice(l until r).asSequence().map { (_, rid) -> rid }
         }
 
         override fun load() {
