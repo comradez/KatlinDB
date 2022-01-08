@@ -37,4 +37,6 @@ class TypeMismatchError(value: Any?) :
 
 class NestedSelectError(override val message: String) : Exception(message)
 
+class BadColumnIdentifier(override val message: String) : Exception(message)
+
 class InternalError(override val message: String) : Exception(message)

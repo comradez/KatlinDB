@@ -70,6 +70,40 @@ class SystemManager(private val workDir: String) {
         return Triple(metaHandler, tableInfo, columnIndex)
     }
 
+    private fun columnNameResolution(columns: Sequence<UnqualifiedColumn>, tableInfo: TableInfo) {
+        columns.forEach { column ->
+            if (column.tableName == null) {
+                column.tableName = tableInfo.name
+            } else if (column.tableName != tableInfo.name) {
+                throw BadColumnIdentifier("Column `${column}` mismatched with table `${tableInfo.name}`")
+            }
+        }
+    }
+
+    private fun columnNameResolution(
+        columns: Sequence<UnqualifiedColumn>,
+        tableInfos: Sequence<TableInfo>
+    ) {
+        val tables = tableInfos.map { it.name }.toSet()
+        val candidates = mutableMapOf<String, MutableSet<String>>()
+        tableInfos.forEach { tableInfo ->
+            tableInfo.columns.forEach { columnInfo ->
+                candidates.getOrPut(columnInfo.name) { mutableSetOf() }
+                    .add(tableInfo.name)
+            }
+        }
+        columns.forEach { column ->
+            if (column.tableName == null) {
+                val tableNames = candidates[column.columnName]
+                    ?: throw BadColumnIdentifier("Unknown column `${column}`")
+                column.tableName = tableNames.singleOrNull()
+                    ?: throw BadColumnIdentifier("Column `${column}` is ambiguous")
+            } else if (column.tableName !in tables) {
+                throw BadColumnIdentifier("Unknown column `${column}`")
+            }
+        }
+    }
+
     fun execute(sql: String): List<QueryResult> {
         val stream = CharStreams.fromString(sql)
         val lexer = SQLLexer(stream)
@@ -247,21 +281,31 @@ class SystemManager(private val workDir: String) {
 
     fun selectRecords(
         selectors: List<Selector>,
-        tableNames: List<String>,
+        tableNames: Set<String>,
         conditions: List<Condition> = listOf(),
         groupBy: Pair<String, String>? = null,
         limit: Int? = null,
         offset: Int? = null
     ): QueryResult {
+        val metaHandler = this.selectedDatabaseMeta
+        val tableInfos = tableNames.map { tableName ->
+            metaHandler.dbInfo.tableMap[tableName] ?: throw TableNotExistsError(tableName)
+        }
+        this.columnNameResolution(
+            selectors.asSequence().map { it.column } +
+                    conditions.asSequence().map { it.column },
+            tableInfos.asSequence()
+        )
         TODO()
     }
 
     fun updateRecords(
         tableName: String,
-        conditions: List<Condition>,
+        conditions: List<PredicateCondition>,
         map: Map<String, Any?>
     ): QueryResult {
         val (metaHandler, tableInfo) = this.selectTable(tableName)
+        this.columnNameResolution(conditions.asSequence().map { it.column }, tableInfo)
         // TODO map 的合法性检查
         val map = map.map { (columnName, value) -> tableInfo.getColumnIndex(columnName) to value }
         val record = this.recordHandler.openRecord(metaHandler.dbName, tableName)
@@ -280,8 +324,9 @@ class SystemManager(private val workDir: String) {
         return SuccessResult(listOf("Updated"), listOf(listOf(values.size)))
     }
 
-    fun deleteRecords(tableName: String, conditions: List<Condition>): QueryResult {
+    fun deleteRecords(tableName: String, conditions: List<PredicateCondition>): QueryResult {
         val (metaHandler, tableInfo) = this.selectTable(tableName)
+        this.columnNameResolution(conditions.asSequence().map { it.column }, tableInfo)
         val record = this.recordHandler.openRecord(metaHandler.dbName, tableName)
         val values = this.selectRecords(metaHandler, tableInfo, conditions).toList()
         values.forEach { (rid, row) ->
@@ -445,7 +490,7 @@ class SystemManager(private val workDir: String) {
     private fun selectIndices(
         metaHandler: MetaHandler,
         tableInfo: TableInfo,
-        conditions: List<Condition>
+        conditions: List<PredicateCondition>
     ): Sequence<RID> {
         val ranges = mutableMapOf<String, Pair<Int, Int>>()
         conditions.asSequence()
@@ -518,7 +563,7 @@ class SystemManager(private val workDir: String) {
     private fun selectRecords(
         metaHandler: MetaHandler,
         tableInfo: TableInfo,
-        conditions: List<Condition>
+        conditions: List<PredicateCondition>
     ): Sequence<Pair<RID, List<Any?>>> {
         val record = this.recordHandler.openRecord(metaHandler.dbName, tableInfo.name)
         val test = selectIndices(metaHandler, tableInfo, conditions).toList()
@@ -531,5 +576,44 @@ class SystemManager(private val workDir: String) {
             condition.predicate.build(columnIndex to columnInfo)
         }
         return values.filter { (_, row) -> predicates.all { p -> p(row) } }
+    }
+
+    private fun joinEquals(
+        results: Map<String, SuccessResult>,
+        joinConditions: List<JoinCondition>
+    ): SuccessResult {
+        val results = results.toMutableMap()
+        // [((table_0, table_1), (column_0, column_1))]
+        val columnPairs = joinConditions.map { (tableName, columnName,
+                                                   targetTableName, targetColumnName) ->
+            val column = Pair(tableName!!, columnName)
+            val targetColumn = Pair(targetTableName!!, targetColumnName)
+            listOf(column, targetColumn)
+                .sortedWith { lhs, rhs -> lhs.compareTo(rhs) }
+                .unzip()
+                .map { (a, b) -> Pair(a, b) }
+        }
+        // (table_0, table_1) => [(column_0, column_1), ...]
+        val joinPairs = mutableMapOf<Pair<String, String>, MutableList<Pair<String, String>>>()
+        columnPairs.forEach { (tablePair, columnPair) ->
+            joinPairs.getOrPut(tablePair) { mutableListOf() }.add(columnPair)
+        }
+        val tables = UnionFindSet(results.keys)
+        val result = joinPairs.entries.fold(null as SuccessResult?) { _, (tablePair, columnPairs) ->
+            val (outerTableName, innerTableName) = tablePair
+            val outerResult = results[outerTableName]!!
+            val innerResult = results[innerTableName]!!
+            val outerColumns = columnPairs.map { (outerColumnName, _) ->
+                Pair(outerTableName, outerColumnName)
+            }
+            val innerColumns = columnPairs.map { (_, innerColumnName) ->
+                Pair(innerTableName, innerColumnName)
+            }
+            nestedLoopJoin(outerResult, innerResult, outerColumns, innerColumns).also { result ->
+                val joinedTable = tables.union(outerTableName, innerTableName)
+                results[joinedTable] = result
+            }
+        }
+        return result!!
     }
 }

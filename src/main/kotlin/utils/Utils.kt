@@ -78,13 +78,41 @@ fun readLongFromByteArray(array: ByteArray, offset: Int = 0): Long {
 fun popCount(data: Byte): Int {
     var ret = 0
     ret += data and 0x01
-    ret += if (data and 0x02 != 0.toByte()) { 1 } else { 0 }
-    ret += if (data and 0x04 != 0.toByte()) { 1 } else { 0 }
-    ret += if (data and 0x08 != 0.toByte()) { 1 } else { 0 }
-    ret += if (data and 0x10 != 0.toByte()) { 1 } else { 0 }
-    ret += if (data and 0x20 != 0.toByte()) { 1 } else { 0 }
-    ret += if (data and 0x40 != 0.toByte()) { 1 } else { 0 }
-    ret += if (data.toInt() and 0x80 != 0) { 1 } else { 0 }
+    ret += if (data and 0x02 != 0.toByte()) {
+        1
+    } else {
+        0
+    }
+    ret += if (data and 0x04 != 0.toByte()) {
+        1
+    } else {
+        0
+    }
+    ret += if (data and 0x08 != 0.toByte()) {
+        1
+    } else {
+        0
+    }
+    ret += if (data and 0x10 != 0.toByte()) {
+        1
+    } else {
+        0
+    }
+    ret += if (data and 0x20 != 0.toByte()) {
+        1
+    } else {
+        0
+    }
+    ret += if (data and 0x40 != 0.toByte()) {
+        1
+    } else {
+        0
+    }
+    ret += if (data.toInt() and 0x80 != 0) {
+        1
+    } else {
+        0
+    }
     return ret
 }
 
@@ -136,3 +164,11 @@ fun <T> trimListToPrint(
         list.map(serializer)
     }
 }
+
+operator fun <A : Comparable<A>, B : Comparable<B>>
+        Pair<A, B>.compareTo(other: Pair<A, B>): Int =
+    this.first.compareTo(other.first).takeIf { it != 0 }
+        ?: this.second.compareTo(other.second)
+
+fun <T, R> Pair<T, T>.map(transform: (T) -> R): Pair<R, R> =
+    transform(this.first) to transform(this.second)

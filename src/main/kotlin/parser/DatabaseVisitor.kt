@@ -5,7 +5,6 @@ import metaManagement.info.TableInfo
 import recordManagement.AttributeType
 import recordManagement.CompareOp
 import recordManagement.buildAttributeType
-import recordManagement.buildCompareOp
 import systemManagement.*
 import utils.InternalError
 import utils.NestedSelectError
@@ -157,14 +156,14 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
 
     override fun visitDelete_from_table(ctx: SQLParser.Delete_from_tableContext?): QueryResult {
         val tableName = ctx!!.Identifier().toString()
-        val conditions = (ctx.where_and_clause().accept(this) as List<*>).map { it as Condition }
+        val conditions = (ctx.where_and_clause().accept(this) as List<*>).map { it as PredicateCondition }
         return manager.deleteRecords(tableName, conditions)
     }
 
     override fun visitUpdate_table(ctx: SQLParser.Update_tableContext?): QueryResult {
         val tableName = ctx!!.Identifier().toString()
         val conditions = (ctx.where_and_clause().accept(this) as List<*>)
-            .map { it as Condition }
+            .map { it as PredicateCondition }
         val setValueMap = (ctx.set_clause().accept(this) as HashMap<*, *>)
             .map { (key, value) -> key as String to value as Any? }.toMap()
         return manager.updateRecords(
@@ -179,7 +178,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
     }
 
     override fun visitSelect_table(ctx: SQLParser.Select_tableContext?): QueryResult {
-        val tableNames = (ctx!!.identifiers().accept(this) as List<*>).map { it as String }
+        val tableNames = (ctx!!.identifiers().accept(this) as List<*>).map { it as String }.toSet()
         val conditions = (ctx.where_and_clause()?.accept(this) as List<*>?)?.map { it as Condition }.orEmpty()
         val selectors = (ctx.selectors().accept(this) as List<*>).map { it as Selector }
         val groupBy = if (ctx.column() != null) {
@@ -382,7 +381,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val operator = ctx.operator_().accept(this) as CompareOp
 //        val operator = buildCompareOp(ctx.operator_().toString())
         val value = ctx.expression().accept(this)!!
-        return Condition(tableName, columnName, CompareWith(operator, value))
+        return PredicateCondition(tableName, columnName, CompareWith(operator, value))
     }
 
     override fun visitWhere_operator_select(ctx: SQLParser.Where_operator_selectContext?): Condition {
@@ -395,7 +394,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val values = result.toColumnForOuterSelect().toList()
         val value = values.singleOrNull()
             ?: throw NestedSelectError("One value expected, got ${trimListToPrint(values, 3)}")
-        return Condition(tableName, columnName, CompareWith(operator, value))
+        return PredicateCondition(tableName, columnName, CompareWith(operator, value))
     }
 
     override fun visitWhere_null(ctx: SQLParser.Where_nullContext?): Condition {
@@ -407,7 +406,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         } else {
             IsNull() // xx IS NULL
         }
-        return Condition(tableName, columnName, predicate)
+        return PredicateCondition(tableName, columnName, predicate)
     }
 
     override fun visitWhere_in_list(ctx: SQLParser.Where_in_listContext?): Condition {
@@ -415,7 +414,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val tableName = _tableName as String?
         val columnName = _columnName as String
         val values = ctx.value_list().accept(this) as List<Any?>
-        return Condition(tableName, columnName, ExistsIn(values))
+        return PredicateCondition(tableName, columnName, ExistsIn(values))
     }
 
     override fun visitWhere_in_select(ctx: SQLParser.Where_in_selectContext?): Condition {
@@ -425,7 +424,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val result = ctx.select_table().accept(this) as SuccessResult
         val value = result.toColumnForOuterSelect().toList()
         // 这个 value 是 select 出的结果，必须得是 List 才可以，不然不能 existIn
-        return Condition(tableName, columnName, ExistsIn(value))
+        return PredicateCondition(tableName, columnName, ExistsIn(value))
     }
 
     override fun visitWhere_like_string(ctx: SQLParser.Where_like_stringContext?): Condition {
@@ -435,7 +434,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val pattern = ctx.String().toString().substring(
             1 until ctx.String().toString().length - 1
         )
-        return Condition(tableName, columnName, HasPattern(pattern))
+        return PredicateCondition(tableName, columnName, HasPattern(pattern))
     }
 
     override fun visitColumn(ctx: SQLParser.ColumnContext?): Pair<String?, String> {

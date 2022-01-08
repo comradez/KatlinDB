@@ -2,22 +2,29 @@ package systemManagement
 
 import utils.InternalError
 
-abstract class Selector(val tableName: String?, val columnName: String) {
+abstract class Selector(_tableName: String?, _columnName: String) {
+    val column = UnqualifiedColumn(_tableName, _columnName)
+    val tableName get() = this.column.tableName
+    val columnName get() = this.column.columnName
+
     companion object {
         const val WILDCARD = "*"
     }
+
+    operator fun component1() = this.tableName
+    operator fun component2() = this.columnName
 }
 
 class FieldSelector(_tableName: String?, _columnName: String) : Selector(_tableName, _columnName) {
 }
 
-class CountSelector : Selector(Selector.WILDCARD, Selector.WILDCARD) {
+class CountSelector : Selector(WILDCARD, WILDCARD) {
 }
 
 class AggregationSelector(
     _tableName: String?,
     _columnName: String,
-    aggregator: Aggregator
+    val aggregator: Aggregator
 ) : Selector(_tableName, _columnName) {
     enum class Aggregator {
         AVERAGE,

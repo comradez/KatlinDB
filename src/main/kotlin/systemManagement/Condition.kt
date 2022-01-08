@@ -94,5 +94,35 @@ class IsNotNull : Predicate() {
     }
 }
 
-data class Condition(val tableName: String?, val columnName: String, val predicate: Predicate) {
+abstract class Condition(_tableName: String?, _columnName: String) {
+    val column = UnqualifiedColumn(_tableName, _columnName)
+    val tableName get() = this.column.tableName
+    val columnName get() = this.column.columnName
+
+    operator fun component1() = this.tableName
+    operator fun component2() = this.columnName
+}
+
+class PredicateCondition(
+    _tableName: String?,
+    _columnName: String,
+    _predicate: Predicate
+) : Condition(_tableName, _columnName) {
+    val predicate = _predicate
+
+    operator fun component3() = this.predicate
+}
+
+class JoinCondition(
+    _tableName: String?,
+    _columnName: String,
+    _targetTableName: String?,
+    _targetColumnName: String
+) : Condition(_tableName, _columnName) {
+    val targetColumn = UnqualifiedColumn(_targetTableName, _targetColumnName)
+    val targetTableName get() = this.targetColumn.tableName
+    val targetColumnName get() = this.targetColumn.columnName
+
+    operator fun component3() = this.targetTableName
+    operator fun component4() = this.targetColumnName
 }
