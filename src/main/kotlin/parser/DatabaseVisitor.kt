@@ -122,7 +122,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val (_columns, _foreignKeys, _primaryKey) = ctx!!.field_list().accept(this)!! as Triple<*, *, *>
         val columns = (_columns as List<*>).map { it as ColumnInfo }
         val foreignKeys = _foreignKeys as HashMap<*, *> // 实际上是 HashMap<String, Pair<String, String>>
-        val primaryKey = (_primaryKey as List<*>?)?.map { it as String }
+        val primaryKey = (_primaryKey as List<*>?)?.map { it as String }.orEmpty()
         val tableName = ctx.Identifier().toString()
         manager.createTable(TableInfo(tableName, columns))
         for ((_columnInfo, _columnMessage) in foreignKeys) {
@@ -377,7 +377,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val columnName = _columnName as String
         val operator = buildCompareOp(ctx.operator_().toString())
         val value = ctx.expression().accept(this)!!
-        return Condition(tableName, columnName, compareWith(operator, value))
+        return Condition(tableName, columnName, CompareWith(operator, value))
     }
 
     override fun visitWhere_operator_select(ctx: SQLParser.Where_operator_selectContext?): Condition {
@@ -387,7 +387,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val operator = buildCompareOp(ctx.operator_().toString())
         val result = ctx.select_table().accept(this) as SuccessResult
         val value = manager.resultToValue(result, false)
-        return Condition(tableName, columnName, compareWith(operator, value))
+        return Condition(tableName, columnName, CompareWith(operator, value))
     }
 
     override fun visitWhere_null(ctx: SQLParser.Where_nullContext?): Condition {
@@ -395,9 +395,9 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val tableName = _tableName as String?
         val columnName = _columnName as String
         val predicate = if (ctx.getChild(2).toString().uppercase() == "NOT") {
-            isNotNull() // xx IS NOT NULL
+            IsNotNull() // xx IS NOT NULL
         } else {
-            isNull() // xx IS NULL
+            IsNull() // xx IS NULL
         }
         return Condition(tableName, columnName, predicate)
     }
@@ -407,7 +407,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val tableName = _tableName as String?
         val columnName = _columnName as String
         val values = ctx.value_list().accept(this) as List<Any?>
-        return Condition(tableName, columnName, existsIn(values))
+        return Condition(tableName, columnName, ExistsIn(values))
     }
 
     override fun visitWhere_in_select(ctx: SQLParser.Where_in_selectContext?): Condition {
@@ -417,7 +417,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val result = ctx.select_table().accept(this) as SuccessResult
         val value = manager.resultToValue(result, true) as List<Any?>
         // 这个 value 是 select 出的结果，必须得是 List 才可以，不然不能 existIn
-        return Condition(tableName, columnName, existsIn(value))
+        return Condition(tableName, columnName, ExistsIn(value))
     }
 
     override fun visitWhere_like_string(ctx: SQLParser.Where_like_stringContext?): Condition {
@@ -427,7 +427,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val pattern = ctx.String().toString().substring(
             1 until ctx.String().toString().length - 1
         )
-        return Condition(tableName, columnName, hasPattern(pattern))
+        return Condition(tableName, columnName, HasPattern(pattern))
     }
 
     override fun visitColumn(ctx: SQLParser.ColumnContext?): Pair<String?, String> {

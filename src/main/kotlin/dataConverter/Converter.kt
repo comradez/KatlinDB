@@ -10,7 +10,7 @@ class Converter {
             sizeList: List<Int>,
             typeList: List<AttributeType>,
             totalSize: Int,
-            valueList: List<Any>
+            valueList: List<Any?>
         ): ByteArray {
             if (sizeList.size != typeList.size || typeList.size != valueList.size) {
                 throw InternalError("Lengths of values mismatch with those of columns.")
@@ -22,10 +22,10 @@ class Converter {
                 val type = triple.first.second
                 val value = triple.second
                 when (type) {
-                    AttributeType.INT -> writeIntToByteArray(value as Int, record, offset)
-                    AttributeType.FLOAT -> writeFloatToByteArray(value as Float, record, offset)
-                    AttributeType.STRING -> writeStringToByteArray(value as String, record, offset)
-                    AttributeType.LONG -> writeLongToByteArray(value as Long, record, offset)
+                    AttributeType.INT -> writeIntToByteArray(value as Int? ?: Int.MIN_VALUE, record, offset)
+                    AttributeType.FLOAT -> writeFloatToByteArray(value as Float? ?: Float.NaN, record, offset)
+                    AttributeType.STRING -> writeStringToByteArray(value as String? ?: "", record, offset)
+                    AttributeType.LONG -> writeLongToByteArray(value as Long? ?: Long.MIN_VALUE, record, offset)
                 }
                 offset += size
             }
@@ -33,17 +33,17 @@ class Converter {
             return record
         }
 
-        fun decode(sizeList: List<Int>, typeList: List<AttributeType>, totalSize: Int, record: Record): List<Any> {
+        fun decode(sizeList: List<Int>, typeList: List<AttributeType>, totalSize: Int, record: Record): List<Any?> {
             val data = record.data
-            val list = mutableListOf<Any>()
+            val list = mutableListOf<Any?>()
             var offset = 0
             for ((size, type) in sizeList zip typeList) {
                 list.add(
                     when (type) {
-                        AttributeType.INT -> readIntFromByteArray(data, offset)
-                        AttributeType.FLOAT -> readFloatFromByteArray(data, offset)
-                        AttributeType.STRING -> readStringFromByteArray(data, offset = offset, size = size)
-                        AttributeType.LONG -> readLongFromByteArray(data, offset)
+                        AttributeType.INT -> readIntFromByteArray(data, offset).takeUnless { it == Int.MIN_VALUE }
+                        AttributeType.FLOAT -> readFloatFromByteArray(data, offset).takeUnless { it.isNaN() }
+                        AttributeType.STRING -> readStringFromByteArray(data, offset = offset, size = size).takeUnless { it.isEmpty() }
+                        AttributeType.LONG -> readLongFromByteArray(data, offset).takeUnless { it == Long.MIN_VALUE }
                     }
                 )
                 offset += size

@@ -7,7 +7,7 @@ private typealias Table = MutableMap<String, Index> // indexName => index
 private typealias Database = Pair<FileHandler, MutableMap<String, Table>> // tableName => table
 
 /**
- * 向上层暴露的管理索引的接口。对于每个数据库的索引处理函数，见 [IndexHandler].
+ * 向上层暴露的管理索引的接口。
  */
 class IndexManager(
     _bufferManager: BufferManager,
@@ -31,36 +31,31 @@ class IndexManager(
         rootPageId: Int
     ): Index {
         val (handler, tables) = this.getDatabase(databaseName)
-        val table = tables[tableName]!!
-        return table.getOrElse(indexName) {
-            Index(handler, rootPageId).also { index ->
-                index.load()
-                table[indexName] = index
-            }
+        return tables[tableName]!!.getOrPut(indexName) {
+            Index(handler, rootPageId).also { it.load() }
         }
     }
 
     fun closeIndex(databaseName: String, tableName: String, indexName: String) {
-        val tables = this.getDatabase(databaseName).second
+        val (_, tables) = this.getDatabase(databaseName)
         tables[tableName]!!.remove(indexName)?.dump()
     }
 
     fun closeDatabase(databaseName: String) {
         this.databases.remove(databaseName)?.let { (handler, tables) ->
-            tables.values
+            tables.values.asSequence()
                 .flatMap { table -> table.values }
                 .forEach { index -> index.dump() }
             handler.close()
         }
     }
 
-    private fun getDatabase(databaseName: String) = this.databases.getOrElse(databaseName) {
-        val handler = FileHandler(
-            this.bufferManager,
-            "${workDir}/${databaseName}/${databaseName}.index"
-        )
-        return Pair(handler, mutableMapOf<String, Table>()).also { database ->
-            this.databases[databaseName] = database
+    private fun getDatabase(databaseName: String): Database =
+        this.databases.getOrPut(databaseName) {
+            val handler = FileHandler(
+                this.bufferManager,
+                "${workDir}/${databaseName}/${databaseName}.index"
+            )
+            Pair(handler, mutableMapOf())
         }
-    }
 }
