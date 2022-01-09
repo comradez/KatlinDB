@@ -12,7 +12,7 @@ import java.io.File
 class FileHandler(_file: File, _bufferManager: BufferManager) {
     val file = _file
     private val bufferManager = _bufferManager
-    private val config: HeaderPageConfig
+    val config: HeaderPageConfig
     var configChanged = false
 
     init {

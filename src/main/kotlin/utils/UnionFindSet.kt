@@ -9,7 +9,7 @@ class UnionFindSet<T>(_set: Set<T>) : Map<T, T> {
     override val values get() = this.setMap.values
     override val size get() = this.setMap.size
 
-    override fun isEmpty(): Boolean = this.size == 0
+    override fun isEmpty(): Boolean = this.setMap.isEmpty()
 
     override fun containsKey(key: T): Boolean = key in this.keys
 

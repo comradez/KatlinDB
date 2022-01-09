@@ -1,43 +1,46 @@
 package parser
 
 import org.sk.PrettyTable
-import utils.NestedSelectError
+import utils.IllFormSelectError
 import utils.trimListToPrint
 
-abstract class QueryResult(
-    val headers: List<String>?,
-    val data: List<List<Any?>>?
-) {
+abstract class QueryResult {
     var timeCost: Long? = null
-    init {
-        if (headers == null) {
-            assert(data == null)
-        } else {
-            for (line in data!!) {
-                assert(line.size == headers.size)
-            }
-        }
-    }
-
-    fun outputTable(): String? {
-        if (headers == null || data == null) {
-            return null
-        }
-        val prettyTable = PrettyTable(*headers.toTypedArray())
-        for (line in data) {
-            prettyTable.addRow(*line.map { it.toString() }.toTypedArray())
-        }
-        return prettyTable.toString()
-    }
 }
 
-class SuccessResult(
-    headers: List<String>?,
-    data: List<List<Any?>>?
-) : QueryResult(headers, data) {
+class EmptyResult : QueryResult()
+
+class ErrorResult(val errorMessage: String) : QueryResult()
+
+class SuccessResult(val headers: List<String>, val data: List<List<Any?>>) : QueryResult() {
+    init {
+        assert(this.data.all { row -> row.size == this.headers.size })
+    }
+
+    val columnIndices get() = this.headers.indices
+    val columnSize get() = this.headers.size
+    val rowSize get() = this.data.size
+    val aliases get() = this.aliasMap.entries
+
+    private val headerIndices = this.headers.withIndex().associate { (index, header) ->
+        header to index
+    }
+    private val aliasMap = mutableMapOf<String, String>() // alias => header
+
+    fun getHeaderIndex(header: String): Int =
+        this.headerIndices[this.aliasMap.getOrDefault(header, header)]!!
+
+    fun setAlias(alias: String, header: String) {
+        this.aliasMap[alias] = header
+    }
+
+    fun setAliases(map: Sequence<Pair<String, String>>) {
+        this.aliasMap.putAll(map)
+    }
+
     fun toColumnForOuterSelect(): Sequence<Any?> {
-        if (this.headers!!.size != 1) {
-            throw NestedSelectError(
+        if (this.columnSize != 1) {
+            throw IllFormSelectError(
                 "Recursive SELECT must return just one column, got ${
                     trimListToPrint(
                         this.headers,
@@ -46,12 +49,14 @@ class SuccessResult(
                 }"
             )
         }
-        return this.data!!.asSequence().map { it.first() }
+        return this.data.asSequence().map { it.first() }
+    }
+
+    fun outputTable(): String {
+        val prettyTable = PrettyTable(*this.headers.toTypedArray())
+        for (line in this.data) {
+            prettyTable.addRow(*line.map { it.toString() }.toTypedArray())
+        }
+        return prettyTable.toString()
     }
 }
-
-class EmptyResult() : QueryResult(null, null)
-
-class ErrorResult(
-    val errorMessage: String
-) : QueryResult(null, null)

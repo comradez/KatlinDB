@@ -18,8 +18,6 @@ import recordManagement.RecordHandler
 import utils.*
 import java.io.File
 import java.io.FileWriter
-import java.io.PrintWriter
-import java.sql.Date
 import java.util.*
 import kotlin.math.max
 import kotlin.math.min
@@ -116,12 +114,19 @@ class SystemManager(private val workDir: String) {
     fun load(filename: String, tableName: String) {
         val file = File(filename)
         val (_, tableInfo) = this.selectTable(tableName)
-        val types = tableInfo.columnIndices.map { (_, columnIndex) -> tableInfo.columns[columnIndex].type }
+        val types = tableInfo.columnIndices.map { (_, columnIndex) ->
+            tableInfo.columns[columnIndex].type
+        }
         if (file.exists() && file.isFile) {
             val lines = file.readLines()
             for (line in lines) {
                 val pieces = line.split(',')
-                val dataForInsert = (pieces zip types).map { (piece, type) -> Converter.convertFromString(piece, type) }
+                val dataForInsert = (pieces zip types).map { (piece, type) ->
+                    Converter.convertFromString(
+                        piece,
+                        type
+                    )
+                }
                 insertRecord(tableName, dataForInsert)
             }
         } else {
@@ -132,13 +137,20 @@ class SystemManager(private val workDir: String) {
     fun dump(filename: String, tableName: String) {
         val file = File(filename)
         val (metaHandler, tableInfo) = this.selectTable(tableName)
-        val types = tableInfo.columnIndices.map { (_, columnIndex) -> tableInfo.columns[columnIndex].type }
+        val types = tableInfo.columnIndices.map { (_, columnIndex) ->
+            tableInfo.columns[columnIndex].type
+        }
         if (!file.exists()) {
             file.createNewFile()
             val writer = FileWriter(filename, true)
             val records = selectRecords(metaHandler, tableInfo, listOf())
             for ((_, record) in records) {
-                val dataForDump = (record zip types).joinToString(",") { (data, type) -> Converter.convertToString(data, type) }
+                val dataForDump = (record zip types).joinToString(",") { (data, type) ->
+                    Converter.convertToString(
+                        data,
+                        type
+                    )
+                }
                 writer.write(dataForDump + "\n")
             }
             writer.close()
@@ -273,7 +285,7 @@ class SystemManager(private val workDir: String) {
 
     fun insertRecord(tableName: String, row: List<Any?>) {
         val (metaHandler, tableInfo) = this.selectTable(tableName)
-        this.checkInsertConstraints(tableInfo, row)
+        this.checkInsertConstraints(metaHandler, tableInfo, row)
         val record = this.recordHandler.openRecord(metaHandler.dbName, tableName)
         val rid = record.insertRecord(tableInfo.buildRecord(row))
         this.insertIndex(metaHandler, tableInfo, rid, row)
@@ -283,20 +295,121 @@ class SystemManager(private val workDir: String) {
         selectors: List<Selector>,
         tableNames: Set<String>,
         conditions: List<Condition> = listOf(),
-        groupBy: Pair<String, String>? = null,
+        groupBy: UnqualifiedColumn? = null,
         limit: Int? = null,
         offset: Int? = null
     ): QueryResult {
+        assert(selectors.isNotEmpty())
         val metaHandler = this.selectedDatabaseMeta
         val tableInfos = tableNames.map { tableName ->
             metaHandler.dbInfo.tableMap[tableName] ?: throw TableNotExistsError(tableName)
         }
         this.columnNameResolution(
-            selectors.asSequence().map { it.column } +
-                    conditions.asSequence().map { it.column },
+            selectors.asSequence().filterIsInstance<AggregationSelector>().map { it.column } +
+                    selectors.asSequence().filterIsInstance<FieldSelector>().map { it.column } +
+                    conditions.asSequence().flatMap {
+                        when (it) {
+                            is JoinCondition -> sequenceOf(it.column, it.targetColumn)
+                            else -> sequenceOf(it.column)
+                        }
+                    } + sequence { groupBy?.also { yield(it) } },
             tableInfos.asSequence()
         )
-        TODO()
+        if (groupBy == null &&
+            selectors.any { it is FieldSelector || it is WildcardSelector } &&
+            selectors.any { it is AggregationSelector || it is WildcardCountSelector }
+        ) {
+            throw IllFormSelectError("SELECT without GROUP BY should not contain both field and aggregation selectors")
+        }
+        // just a trick
+        if (selectors.singleOrNull() is WildcardCountSelector &&
+            groupBy == null &&
+            tableNames.size == 1
+        ) {
+            val record = this.recordHandler.openRecord(metaHandler.dbName, tableNames.single())
+            return SuccessResult(listOf("Count"), listOf(listOf(record.config.recordNumber)))
+        }
+        val predicateConditions = conditions.filterIsInstance<PredicateCondition>()
+        val joinConditions = conditions.filterIsInstance<JoinCondition>()
+        val results = tableNames.associateWith { tableName ->
+            val tableInfo = metaHandler.getTable(tableName)
+            val record = this.recordHandler.openRecord(metaHandler.dbName, tableName)
+            val data = this.selectIndices(metaHandler, tableInfo, predicateConditions)
+                .map { rid -> tableInfo.parseRecord(record.getRecord(rid)) }
+            SuccessResult(tableInfo.getHeader(), data.toList())
+        }
+        val result = results.values.singleOrNull()
+            ?: this.joinEquals(results, joinConditions)
+        if (groupBy != null) {
+            when (selectors.first()) {
+                is WildcardSelector -> {
+                    if (result.columnSize > 1) {
+                        throw IllFormSelectError(
+                            "Cannot GROUP ${
+                                trimListToPrint(
+                                    result.headers,
+                                    3
+                                )
+                            } BY $groupBy"
+                        )
+                    }
+                    val data = result.data.map { it.single() }.distinct()
+                    return SuccessResult(result.headers, data.map { listOf(it) })
+                }
+                else -> { // !is WildcardSelector
+                    val fieldSelectors = selectors.filterIsInstance<FieldSelector>().distinct()
+                    if (fieldSelectors.isNotEmpty()) {
+                        val fieldSelector = fieldSelectors.first()
+                        if (fieldSelector.column != groupBy) {
+                            throw IllFormSelectError("Field `${fieldSelector.column}` is not in GROUP BY")
+                        } else if (fieldSelectors.size > 1) {
+                            throw IllFormSelectError("Field `${fieldSelectors.last().column}` is not in the GROUP BY clause")
+                        }
+                    }
+                    val groupKeyIndex = result.getHeaderIndex(groupBy.toString())
+                    val groups = result.data.groupBy { row -> row[groupKeyIndex] }
+                    val headers = selectors.map { selector ->
+                        when (selector) {
+                            is FieldSelector ->
+                                selector to result.getHeaderIndex(selector.toString())
+                            is AggregationSelector ->
+                                selector to result.getHeaderIndex(selector.toString())
+                            else /* WildCardCountSelector */ ->
+                                selector to 0
+                        }
+                    }
+                    return aggregate(headers, groups.values)
+                }
+            }
+        } else { // groupBy == null
+            when (selectors.first()) {
+                is WildcardSelector -> {
+                    return result
+                }
+                is FieldSelector -> {
+                    val headers = selectors.map { selector ->
+                        selector as FieldSelector
+                        val header = selector.column.toString()
+                        header to result.getHeaderIndex(header)
+                    }
+                    return SuccessResult(
+                        headers.map { (header, _) -> header },
+                        result.data.map { row -> headers.map { (_, index) -> row[index] } }
+                    )
+                }
+                else -> { // aggregation
+                    val headers = selectors.map { selector ->
+                        when (selector) {
+                            is AggregationSelector ->
+                                selector to result.getHeaderIndex(selector.toString())
+                            else /* WildCardCountSelector */ ->
+                                selector to 0
+                        }
+                    }
+                    return aggregate(headers, listOf(result.data))
+                }
+            }
+        }
     }
 
     fun updateRecords(
@@ -311,12 +424,12 @@ class SystemManager(private val workDir: String) {
         val record = this.recordHandler.openRecord(metaHandler.dbName, tableName)
         val values = this.selectRecords(metaHandler, tableInfo, conditions).toList()
         values.forEach { (rid, oldRow) ->
-            this.checkDeleteConstraints(tableInfo, oldRow)
+            this.checkDeleteConstraints(metaHandler, tableInfo, oldRow)
             val newRow = oldRow.toMutableList()
             map.forEach { (columnIndex, value) ->
                 newRow[columnIndex] = value
             }
-            this.checkInsertConstraints(tableInfo, newRow)
+            this.checkInsertConstraints(metaHandler, tableInfo, newRow)
             this.deleteIndex(metaHandler, tableInfo, rid, oldRow)
             record.updateRecord(rid, tableInfo.buildRecord(newRow))
             this.insertIndex(metaHandler, tableInfo, rid, newRow)
@@ -330,7 +443,7 @@ class SystemManager(private val workDir: String) {
         val record = this.recordHandler.openRecord(metaHandler.dbName, tableName)
         val values = this.selectRecords(metaHandler, tableInfo, conditions).toList()
         values.forEach { (rid, row) ->
-            this.checkDeleteConstraints(tableInfo, row)
+            this.checkDeleteConstraints(metaHandler, tableInfo, row)
             record.deleteRecord(rid)
             this.deleteIndex(metaHandler, tableInfo, rid, row)
         }
@@ -443,12 +556,79 @@ class SystemManager(private val workDir: String) {
         metaHandler.dropIndex(indexName)
     }
 
-    private fun checkInsertConstraints(tableInfo: TableInfo, row: List<Any?>) {
-        // TODO
+    private fun isDuplicated(
+        metaHandler: MetaHandler,
+        tableInfo: TableInfo,
+        keys: List<Pair<Int, Any>>,
+        self: RID? = null
+    ): Boolean {
+        val conditions = keys.map { (columnIndex, key) ->
+            val column = UnqualifiedColumn(tableInfo.name, tableInfo.columns[columnIndex].name)
+            val predicate = CompareWith(CompareOp.EQ_OP, key)
+            PredicateCondition(column, predicate)
+        }
+        val result = this.selectRecords(metaHandler, tableInfo, conditions)
+        return if (self == null) {
+            result.iterator().hasNext()
+        } else {
+            result.any { (rid, _) -> rid == self }
+        }
     }
 
-    private fun checkDeleteConstraints(tableInfo: TableInfo, row: List<Any?>) {
-        // TODO
+    private fun checkInsertConstraints(
+        metaHandler: MetaHandler,
+        tableInfo: TableInfo,
+        row: List<Any?>
+    ) {
+        // primary key
+        if (tableInfo.primary.isNotEmpty()) {
+            val keys = tableInfo.primary.map { columnName ->
+                val columnIndex = tableInfo.getColumnIndex(columnName)
+                columnIndex to row[columnIndex]!!
+            }
+            if (this.isDuplicated(metaHandler, tableInfo, keys)) {
+                throw ConstraintViolationError(
+                    "Duplicated primary key(s): ${
+                        trimListToPrint(
+                            keys.map { (_, value) -> value },
+                            3
+                        )
+                    }"
+                )
+            }
+        }
+        // unique
+        tableInfo.unique.forEach { columnName ->
+            val columnIndex = tableInfo.getColumnIndex(columnName)
+            val value = row[columnIndex]!!
+            val keys = listOf(columnIndex to value)
+            if (this.isDuplicated(metaHandler, tableInfo, keys)) {
+                throw ConstraintViolationError("Duplicated unique key: `${value}`")
+            }
+        }
+        // foreign key
+        tableInfo.foreign.forEach { columnName, (foreignTableName, foreignColumnName) ->
+            val columnIndex = tableInfo.getColumnIndex(columnName)
+            val value = row[columnIndex]!!
+            val foreignTableInfo = metaHandler.getTable(foreignTableName)
+            val rootPageId = foreignTableInfo.indices[foreignColumnName]!!
+            val index = this.indexManager.openIndex(
+                metaHandler.dbName,
+                foreignTableName,
+                foreignColumnName,
+                rootPageId
+            )
+            index.get(value as Int)
+                ?: throw ConstraintViolationError("Missing foreign key `${columnName}`: `${value}`")
+        }
+    }
+
+    private fun checkDeleteConstraints(
+        metaHandler: MetaHandler,
+        tableInfo: TableInfo,
+        row: List<Any?>
+    ) {
+        // TODO foreign key
     }
 
     private fun insertIndex(
@@ -601,13 +781,13 @@ class SystemManager(private val workDir: String) {
         val tables = UnionFindSet(results.keys)
         val result = joinPairs.entries.fold(null as SuccessResult?) { _, (tablePair, columnPairs) ->
             val (outerTableName, innerTableName) = tablePair
-            val outerResult = results[outerTableName]!!
-            val innerResult = results[innerTableName]!!
+            val outerResult = results[tables.find(outerTableName)]!!
+            val innerResult = results[tables.find(innerTableName)]!!
             val outerColumns = columnPairs.map { (outerColumnName, _) ->
-                Pair(outerTableName, outerColumnName)
+                "${outerTableName}.${outerColumnName}"
             }
             val innerColumns = columnPairs.map { (_, innerColumnName) ->
-                Pair(innerTableName, innerColumnName)
+                "${innerTableName}.${innerColumnName}"
             }
             nestedLoopJoin(outerResult, innerResult, outerColumns, innerColumns).also { result ->
                 val joinedTable = tables.union(outerTableName, innerTableName)

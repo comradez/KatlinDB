@@ -6,8 +6,8 @@ import recordManagement.AttributeType
 import recordManagement.CompareOp
 import recordManagement.buildAttributeType
 import systemManagement.*
+import utils.IllFormSelectError
 import utils.InternalError
-import utils.NestedSelectError
 import utils.trimListToPrint
 
 @Suppress("NAME_SHADOWING")
@@ -182,8 +182,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val conditions = (ctx.where_and_clause()?.accept(this) as List<*>?)?.map { it as Condition }.orEmpty()
         val selectors = (ctx.selectors().accept(this) as List<*>).map { it as Selector }
         val groupBy = if (ctx.column() != null) {
-            val groupByTemp = ctx.column().accept(this)
-            (groupByTemp as Pair<*, *>).first as String to groupByTemp.second as String
+            ctx.column().accept(this) as UnqualifiedColumn
         } else { null }
         val (limit, offset) = when (ctx.Integer().size) {
             2 -> ctx.Integer(0).toString().toInt() to ctx.Integer(1).toString().toInt()
@@ -376,71 +375,61 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
     }
 
     override fun visitWhere_operator_expression(ctx: SQLParser.Where_operator_expressionContext?): Condition {
-        val (_tableName, _columnName) = ctx!!.column().accept(this) as Pair<*, *>
-        val tableName = _tableName as String?
-        val columnName = _columnName as String
+        val unqualifiedColumn = ctx!!.column().accept(this) as UnqualifiedColumn
         val operator = ctx.operator_().accept(this) as CompareOp
-//        val operator = buildCompareOp(ctx.operator_().toString())
         val value = ctx.expression().accept(this)!!
-        return PredicateCondition(tableName, columnName, CompareWith(operator, value))
+        // TODO `= column`
+        return PredicateCondition(unqualifiedColumn, CompareWith(operator, value))
     }
 
     override fun visitWhere_operator_select(ctx: SQLParser.Where_operator_selectContext?): Condition {
-        val (_tableName, _columnName) = ctx!!.column().accept(this) as Pair<*, *>
-        val tableName = _tableName as String?
-        val columnName = _columnName as String
+        val unqualifiedColumn = ctx!!.column().accept(this) as UnqualifiedColumn
         val operator = ctx.operator_().accept(this) as CompareOp
-//        val operator = buildCompareOp(ctx.operator_().toString())
         val result = ctx.select_table().accept(this) as SuccessResult
         val values = result.toColumnForOuterSelect().toList()
         val value = values.singleOrNull()
-            ?: throw NestedSelectError("One value expected, got ${trimListToPrint(values, 3)}")
-        return PredicateCondition(tableName, columnName, CompareWith(operator, value))
+            ?: throw IllFormSelectError("One value expected, got ${trimListToPrint(values, 3)}")
+        return PredicateCondition(unqualifiedColumn, CompareWith(operator, value))
     }
 
     override fun visitWhere_null(ctx: SQLParser.Where_nullContext?): Condition {
-        val (_tableName, _columnName) = ctx!!.column().accept(this) as Pair<*, *>
-        val tableName = _tableName as String?
-        val columnName = _columnName as String
+        val unqualifiedColumn = ctx!!.column().accept(this) as UnqualifiedColumn
         val predicate = if (ctx.getChild(2).toString().uppercase() == "NOT") {
             IsNotNull() // xx IS NOT NULL
         } else {
             IsNull() // xx IS NULL
         }
-        return PredicateCondition(tableName, columnName, predicate)
+        return PredicateCondition(unqualifiedColumn, predicate)
     }
 
     override fun visitWhere_in_list(ctx: SQLParser.Where_in_listContext?): Condition {
-        val (_tableName, _columnName) = ctx!!.column().accept(this) as Pair<*, *>
-        val tableName = _tableName as String?
-        val columnName = _columnName as String
+        val unqualifiedColumn = ctx!!.column().accept(this) as UnqualifiedColumn
         val values = ctx.value_list().accept(this) as List<Any?>
-        return PredicateCondition(tableName, columnName, ExistsIn(values))
+        return PredicateCondition(unqualifiedColumn, ExistsIn(values))
     }
 
     override fun visitWhere_in_select(ctx: SQLParser.Where_in_selectContext?): Condition {
-        val (_tableName, _columnName) = ctx!!.column().accept(this) as Pair<*, *>
-        val tableName = _tableName as String?
-        val columnName = _columnName as String
+        val unqualifiedColumn = ctx!!.column().accept(this) as UnqualifiedColumn
         val result = ctx.select_table().accept(this) as SuccessResult
         val value = result.toColumnForOuterSelect().toList()
         // 这个 value 是 select 出的结果，必须得是 List 才可以，不然不能 existIn
-        return PredicateCondition(tableName, columnName, ExistsIn(value))
+        return PredicateCondition(unqualifiedColumn, ExistsIn(value))
     }
 
     override fun visitWhere_like_string(ctx: SQLParser.Where_like_stringContext?): Condition {
-        val (_tableName, _columnName) = ctx!!.column().accept(this) as Pair<*, *>
-        val tableName = _tableName as String?
-        val columnName = _columnName as String
+        val unqualifiedColumn = ctx!!.column().accept(this) as UnqualifiedColumn
         val pattern = ctx.String().toString().substring(
             1 until ctx.String().toString().length - 1
         )
-        return PredicateCondition(tableName, columnName, HasPattern(pattern))
+        return PredicateCondition(unqualifiedColumn, HasPattern(pattern))
     }
 
-    override fun visitColumn(ctx: SQLParser.ColumnContext?): Pair<String?, String> {
-        return ctx!!.Identifier(0).toString() to ctx.Identifier(1).toString()
-    }
+    override fun visitColumn(ctx: SQLParser.ColumnContext?): UnqualifiedColumn =
+        if (ctx!!.Identifier().size == 1) {
+            UnqualifiedColumn(null, ctx.Identifier(0).toString())
+        } else {
+            UnqualifiedColumn(ctx.Identifier(0).toString(), ctx.Identifier(1).toString())
+        }
 
     override fun visitExpression(ctx: SQLParser.ExpressionContext?): Any? {
         return if (ctx!!.value() != null) {
@@ -462,7 +451,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
 
     override fun visitSelectors(ctx: SQLParser.SelectorsContext?): List<Selector> {
         return if (ctx!!.getChild(0).toString() == Selector.WILDCARD) {
-            listOf(FieldSelector(Selector.WILDCARD, Selector.WILDCARD))
+            listOf(WildcardSelector())
         } else {
             ctx.selector().map { it.accept(this) as Selector }
         }
@@ -470,15 +459,16 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
 
     override fun visitSelector(ctx: SQLParser.SelectorContext?): Selector {
         if (ctx!!.Count() != null) {
-            return CountSelector()
+            return WildcardCountSelector()
         }
-        val (_tableName, _columnName) = ctx.column().accept(this) as Pair<*, *>
-        val tableName = _tableName as String?
-        val columnName = _columnName as String
+        val unqualifiedColumn = ctx.column().accept(this) as UnqualifiedColumn
         return if (ctx.aggregator() != null) {
-            AggregationSelector(tableName, columnName, buildAggregator(ctx.aggregator().toString()))
+            AggregationSelector(
+                unqualifiedColumn,
+                ctx.aggregator().accept(this) as AggregationSelector.Aggregator
+            )
         } else {
-            FieldSelector(tableName, columnName)
+            FieldSelector(unqualifiedColumn)
         }
     }
 
@@ -502,7 +492,6 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         } else {
             throw InternalError("Bad Operator")
         }
-//        return buildCompareOp(ctx!!.toString())
     }
 
     override fun visitAggregator(ctx: SQLParser.AggregatorContext?): AggregationSelector.Aggregator {
@@ -519,6 +508,5 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         } else {
             throw InternalError("Bad Aggregator")
         }
-//        return buildAggregator(ctx!!.toString())
     }
 }

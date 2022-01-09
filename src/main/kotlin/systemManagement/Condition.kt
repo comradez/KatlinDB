@@ -5,11 +5,11 @@ import recordManagement.AttributeType
 import recordManagement.CompareOp
 import utils.TypeMismatchError
 
-abstract class Predicate {
-    abstract fun build(column: Pair<Int, ColumnInfo>): (List<Any?>) -> Boolean
+interface Predicate {
+    fun build(column: Pair<Int, ColumnInfo>): (List<Any?>) -> Boolean
 }
 
-class CompareWith(val op: CompareOp, val rhs: Any) : Predicate() {
+class CompareWith(val op: CompareOp, val rhs: Any) : Predicate {
     override fun build(column: Pair<Int, ColumnInfo>): (List<Any?>) -> Boolean {
         val (columnIndex, columnInfo) = column
         val compareToRhs: (List<Any?>) -> Int = when (columnInfo.type) {
@@ -44,7 +44,7 @@ class CompareWith(val op: CompareOp, val rhs: Any) : Predicate() {
     }
 }
 
-class ExistsIn(_values: List<Any?>) : Predicate() {
+class ExistsIn(_values: List<Any?>) : Predicate {
     val values = _values.toSet()
 
     override fun build(column: Pair<Int, ColumnInfo>): (List<Any?>) -> Boolean {
@@ -53,7 +53,7 @@ class ExistsIn(_values: List<Any?>) : Predicate() {
     }
 }
 
-class HasPattern(_pattern: String) : Predicate() {
+class HasPattern(_pattern: String) : Predicate {
     val pattern = run {
         var pattern = _pattern // 先把这些映到特殊字符保留下来
             .replace("%%", "\r")
@@ -80,22 +80,21 @@ class HasPattern(_pattern: String) : Predicate() {
     }
 }
 
-class IsNull : Predicate() {
+class IsNull : Predicate {
     override fun build(column: Pair<Int, ColumnInfo>): (List<Any?>) -> Boolean {
         val (columnIndex, _) = column
         return { row -> row[columnIndex] == null }
     }
 }
 
-class IsNotNull : Predicate() {
+class IsNotNull : Predicate {
     override fun build(column: Pair<Int, ColumnInfo>): (List<Any?>) -> Boolean {
         val (columnIndex, _) = column
         return { row -> row[columnIndex] != null }
     }
 }
 
-abstract class Condition(_tableName: String?, _columnName: String) {
-    val column = UnqualifiedColumn(_tableName, _columnName)
+abstract class Condition(val column: UnqualifiedColumn) {
     val tableName get() = this.column.tableName
     val columnName get() = this.column.columnName
 
@@ -104,22 +103,18 @@ abstract class Condition(_tableName: String?, _columnName: String) {
 }
 
 class PredicateCondition(
-    _tableName: String?,
-    _columnName: String,
+    unqualifiedColumn: UnqualifiedColumn,
     _predicate: Predicate
-) : Condition(_tableName, _columnName) {
+) : Condition(unqualifiedColumn) {
     val predicate = _predicate
 
     operator fun component3() = this.predicate
 }
 
 class JoinCondition(
-    _tableName: String?,
-    _columnName: String,
-    _targetTableName: String?,
-    _targetColumnName: String
-) : Condition(_tableName, _columnName) {
-    val targetColumn = UnqualifiedColumn(_targetTableName, _targetColumnName)
+    column: UnqualifiedColumn,
+    val targetColumn: UnqualifiedColumn
+) : Condition(column) {
     val targetTableName get() = this.targetColumn.tableName
     val targetColumnName get() = this.targetColumn.columnName
 

@@ -18,16 +18,3 @@ enum class CompareOp {
             NE_OP -> { result -> result != 0 }
         }
 }
-
-fun buildCompareOp(compareOp: String): CompareOp {
-    println("compareOp is $compareOp")
-    return when (compareOp) {
-        "=" -> CompareOp.EQ_OP
-        "<" -> CompareOp.LT_OP
-        ">" -> CompareOp.GT_OP
-        "<=" -> CompareOp.LE_OP
-        ">=" -> CompareOp.GE_OP
-        "<>" -> CompareOp.NE_OP
-        else -> error(compareOp)
-    }
-}
