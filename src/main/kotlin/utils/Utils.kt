@@ -51,8 +51,6 @@ fun writeStringToByteArray(data: String, array: ByteArray, offset: Int = 0) {
         throw InternalError("String $data length ${data.length}, expected <= 256")
     }
     data.toByteArray(Charset.forName("ASCII")).copyInto(array, offset)
-    println("Input data is $data")
-    println("Input offset is $offset")
 }
 
 fun readStringFromByteArray(array: ByteArray, offset: Int = 0, size: Int?): String {
@@ -62,12 +60,12 @@ fun readStringFromByteArray(array: ByteArray, offset: Int = 0, size: Int?): Stri
 
 fun writeLongToByteArray(data: Long, array: ByteArray, offset: Int = 0) {
     for (i in 0 until 8) {
-        array[offset + i] = ((data shr i) and 0xFF).toByte()
+        array[offset + i] = ((data shr (8 * i)) and 0xFF).toByte()
     }
 }
 
 fun readLongFromByteArray(array: ByteArray, offset: Int = 0): Long {
-    return (0 until 8).sumOf { array[offset + it].toLong() shl (8 * it) }
+    return (0 until 8).sumOf { array[offset + it].toUByte().toLong() shl (8 * it) }
 }
 
 /**

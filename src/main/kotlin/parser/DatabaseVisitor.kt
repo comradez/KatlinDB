@@ -362,8 +362,9 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         } else if (ctx.Float() != null) {
             ctx.Float().toString().toFloat()
         } else if (ctx.String() != null) {
-            ctx.String().toString()
-        } else if (ctx.Null()) {
+            val string = ctx.String().toString()
+            string.substring(1 until string.length - 1)
+        } else if (ctx.Null() != null) {
             null
         } else {
             throw InternalError("Bad value type.")

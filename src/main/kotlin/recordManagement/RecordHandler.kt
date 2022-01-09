@@ -5,6 +5,7 @@ import kotlinx.serialization.json.Json
 import pagedFile.BufferManager
 import utils.PAGE_HEADER_SIZE
 import utils.PAGE_SIZE
+import java.nio.charset.Charset
 
 private typealias Database = MutableMap<String, FileHandler> // table name => record file
 

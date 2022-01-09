@@ -26,10 +26,11 @@ class Converter {
                     AttributeType.INT -> writeIntToByteArray(value as Int? ?: Int.MIN_VALUE, record, offset)
                     AttributeType.FLOAT -> writeFloatToByteArray(value as Float? ?: Float.NaN, record, offset)
                     AttributeType.STRING -> writeStringToByteArray(value as String? ?: "", record, offset)
-                    AttributeType.LONG -> writeLongToByteArray(value as Long? ?: Long.MIN_VALUE, record, offset)
-                }
-                if (type == AttributeType.STRING) {
-                    println("string is: `${readStringFromByteArray(record, offset, size)}`")
+                    AttributeType.LONG -> writeLongToByteArray(
+                        if (value != null) { Date.valueOf(value as String).time } else { Long.MIN_VALUE },
+                        record,
+                        offset
+                    )
                 }
                 offset += size
             }
@@ -46,7 +47,7 @@ class Converter {
                     when (type) {
                         AttributeType.INT -> readIntFromByteArray(data, offset).takeUnless { it == Int.MIN_VALUE }
                         AttributeType.FLOAT -> readFloatFromByteArray(data, offset).takeUnless { it.isNaN() }
-                        AttributeType.STRING -> readStringFromByteArray(data, offset = offset, size = size).takeUnless { it.isEmpty() }
+                        AttributeType.STRING -> readStringFromByteArray(data, offset, size).takeUnless { it.isEmpty() }
                         AttributeType.LONG -> readLongFromByteArray(data, offset).takeUnless { it == Long.MIN_VALUE }
                     }
                 )
@@ -61,15 +62,15 @@ class Converter {
                 AttributeType.INT -> input.toInt()
                 AttributeType.FLOAT -> input.toFloat()
                 AttributeType.STRING -> input
-                AttributeType.LONG -> Date.valueOf(input)
+                AttributeType.LONG -> Date.valueOf(input).time
             }
         }
 
         fun convertToString(value: Any?, type: AttributeType): String {
             return when (type) {
                 AttributeType.INT -> (value as Int?)?.toString() ?: "NULL"
-                AttributeType.FLOAT -> (value as Float?)?.toString() ?: "NULL"
-                AttributeType.STRING -> (value as String?)?.toString() ?: "NULL"
+                AttributeType.FLOAT -> if (value != null) { "%.2f".format(value as Float) } else { "NULL" }
+                AttributeType.STRING -> (value as String?) ?: "NULL"
                 AttributeType.LONG -> if (value != null) { Date(value as Long).toString() } else { "NULL" }
             }
         }

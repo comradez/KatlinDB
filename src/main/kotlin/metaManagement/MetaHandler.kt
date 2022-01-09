@@ -79,7 +79,7 @@ class MetaHandler(
 
     fun setPrimary(tableName: String, primary: List<String>) {
         val table = dbInfo.tableMap[tableName] ?: throw InternalError("No table $tableName in database $dbName found.")
-        table.primary = primary as MutableList<String>
+        table.primary = primary.toMutableList()
     }
 
     fun dropPrimary(tableName: String) {
