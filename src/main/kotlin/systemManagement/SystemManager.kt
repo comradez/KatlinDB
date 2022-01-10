@@ -136,7 +136,7 @@ class SystemManager(private val workDir: String) : AutoCloseable {
                         type
                     )
                 }
-                insertRecord(tableName, dataForInsert)
+                insertRecord(tableName, dataForInsert, false)
             }
         } else {
             throw FileNotExistError(filename)
@@ -292,9 +292,11 @@ class SystemManager(private val workDir: String) : AutoCloseable {
         this.recordHandler.renameRecord(metaHandler.dbName, "${tableName}.copy", tableName)
     }
 
-    fun insertRecord(tableName: String, row: List<Any?>) {
+    fun insertRecord(tableName: String, row: List<Any?>, checkConstraints: Boolean = true) {
         val (metaHandler, tableInfo) = this.selectTable(tableName)
-        this.checkInsertConstraints(metaHandler, tableInfo, row)
+        if (checkConstraints) {
+            this.checkInsertConstraints(metaHandler, tableInfo, row)
+        }
         val record = this.recordHandler.openRecord(metaHandler.dbName, tableName)
         val rid = record.insertRecord(tableInfo.buildRecord(row))
         this.insertIndex(metaHandler, tableInfo, rid, row)
@@ -540,6 +542,7 @@ class SystemManager(private val workDir: String) : AutoCloseable {
             val key = row[columnIndex] as Int
             index.put(key, rid)
         }
+        tableInfo.indices[columnName] = index.rootPageId
     }
 
     fun dropIndex(tableName: String, columnName: String) {
@@ -613,8 +616,9 @@ class SystemManager(private val workDir: String) : AutoCloseable {
                 foreignColumnName,
                 rootPageId
             )
-            index.get(value as Int)
-                ?: throw ConstraintViolationError("Missing foreign key `${columnName}`: `${value}`")
+            index.get(value as Int).ifEmpty {
+                throw ConstraintViolationError("Missing foreign key `${columnName}`: `${value}`")
+            }
         }
     }
 
@@ -632,7 +636,7 @@ class SystemManager(private val workDir: String) : AutoCloseable {
         rid: RID,
         row: List<Any?>
     ) {
-        tableInfo.indices.forEach { (columnName, rootPageId) ->
+        tableInfo.indices.replaceAll { columnName, rootPageId ->
             val index = this.indexManager.openIndex(
                 metaHandler.dbName,
                 tableInfo.name,
@@ -641,6 +645,7 @@ class SystemManager(private val workDir: String) : AutoCloseable {
             )
             val columnIndex = tableInfo.getColumnIndex(columnName)
             index.put(row[columnIndex] as Int? ?: Int.MIN_VALUE, rid)
+            index.rootPageId
         }
     }
 
@@ -658,7 +663,7 @@ class SystemManager(private val workDir: String) : AutoCloseable {
                 rootPageId
             )
             val columnIndex = tableInfo.getColumnIndex(columnName)
-            index.remove(row[columnIndex] as Int? ?: Int.MIN_VALUE)
+            index.remove(row[columnIndex] as Int? ?: Int.MIN_VALUE, rid)
         }
     }
 

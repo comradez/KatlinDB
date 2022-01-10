@@ -1,10 +1,7 @@
 package indexManagement
 
 import pagedFile.FileHandler
-import utils.PAGE_SIZE
-import utils.RID
-import utils.readIntFromByteArray
-import utils.writeIntToByteArray
+import utils.*
 
 /**
  * 使用 B+ 树维护的一个索引，每个 node 占一个 page.
@@ -26,11 +23,11 @@ class Index(
         this.root.debug()
     }
 
-    fun put(key: Int, value: RID): RID? =
+    fun put(key: Int, value: RID) {
         when (this.root.children.isEmpty()) {
-            false -> this.root.put(key, value).also {
+            false -> {
+                this.root.put(key, value)
                 if (this.root.size > PAGE_SIZE) {
-                    println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
                     this.root = InternalNode(
                         this.fileHandler.freshPage(),
                         this.fileHandler,
@@ -43,7 +40,6 @@ class Index(
                 }
             }
             true -> {
-                println("haha")
                 this.root.dirty = true
                 this.root.subtreeDirty = true
                 val node = ExternalNode(
@@ -54,18 +50,23 @@ class Index(
                     _dirty = true
                 )
                 this.root.children = mutableListOf(key to node)
-                null
             }
         }
+    }
 
-    fun remove(key: Int) = this.root.remove(key)
+    fun remove(key: Int, value: RID) = this.root.remove(key, value)
 
     fun get(key: Int) = this.root.get(key)
 
     /**
      * @return index 在 [[low], [high]] 内的 [RID]
      */
-    fun get(low: Int, high: Int) = this.root.get(low, high)
+    fun get(low: Int, high: Int): Sequence<RID> =
+        if (low > high) {
+            emptySequence()
+        } else {
+            this.root.get(low, high)
+        }
 
     private abstract class TreeNode(
         val pageId: Int,
@@ -82,9 +83,9 @@ class Index(
         abstract val size: Int
         abstract val bytes: ByteArray
 
-        abstract fun put(key: Int, value: RID): RID?
-        abstract fun remove(key: Int): RID?
-        abstract fun get(key: Int): RID?
+        abstract fun put(key: Int, value: RID)
+        abstract fun remove(key: Int, value: RID): Boolean
+        abstract fun get(key: Int): Sequence<RID>
         abstract fun get(low: Int, high: Int): Sequence<RID>
 
         abstract fun load()
@@ -149,80 +150,69 @@ class Index(
                 }
             }
 
-        override fun put(key: Int, value: RID): RID? {
+        override fun put(key: Int, value: RID) {
             this.subtreeDirty = true
-            val pos = when (val pos = this.children.binarySearchBy(key) { (key, _) -> key }) {
-                in this.children.indices -> pos // key == key[pos]
-                else -> when (val pos = -pos - 1) {
-                    in this.children.indices -> pos // key[pos - 1] < key < key[pos]
-                    else -> this.children.lastIndex.also { pos -> // max{key} < key
+            val pos = when (val pos = this.children.lowerBound(key) { (key, _) -> key }) {
+                in this.children.indices -> pos
+                else -> (pos - 1).also { pos ->
+                    this.dirty = true
+                    this.children[pos] = key to this.children[pos].second
+                }
+            }
+            val (_, child) = this.children[pos]
+            child.put(key, value)
+            if (child.size > PAGE_SIZE) {
+                this.dirty = true
+                val node = child.split()
+                this.children[pos] = child.max to child
+                this.children.add(pos + 1, node.max to node)
+            }
+        }
+
+        override fun remove(key: Int, value: RID): Boolean {
+            val pos = this.children.lowerBound(key) { (key, _) -> key }
+            for (i in pos until this.children.size) {
+                val (max, child) = this.children[i]
+                if (child.remove(key, value)) {
+                    if (child.empty) {
                         this.dirty = true
-                        this.children[pos] = key to this.children[pos].second
+                        this.children.removeAt(i)
+                    } else {
+                        this.subtreeDirty = true
+                        if (max > child.max) {
+                            this.dirty = true
+                            this.children[i] = child.max to child
+                        }
                     }
+                    return true
+                }
+                if (max > key) {
+                    break
                 }
             }
-            val (_, child) = this.children[pos]
-            return child.put(key, value).also {
-                if (child.size > PAGE_SIZE) {
-                    this.dirty = true
-                    val node = child.split()
-                    this.children[pos] = child.max to child
-                    this.children.add(pos + 1, node.max to node)
+            return false
+        }
+
+        override fun get(key: Int): Sequence<RID> = sequence {
+            val pos = children.lowerBound(key) { (key, _) -> key }
+            for (i in pos until children.size) {
+                val (max, child) = children[i]
+                yieldAll(child.get(key))
+                if (max > key) {
+                    break
                 }
             }
         }
 
-        override fun remove(key: Int): RID? {
-            this.subtreeDirty = true
-            val pos = when (val pos = this.children.binarySearchBy(key) { (key, _) -> key }) {
-                in this.children.indices -> pos.also { // key == key[pos]
-                    this.dirty = true
-                }
-                else -> when (val pos = -pos - 1) {
-                    in this.children.indices -> pos // key[pos - 1] < key < key[pos]
-                    else -> return null // max{key} < key
+        override fun get(low: Int, high: Int): Sequence<RID> = sequence {
+            val pos = children.lowerBound(low) { (key, _) -> key }
+            for (i in pos until children.size) {
+                val (max, child) = children[i]
+                yieldAll(child.get(low, high))
+                if (max > high) {
+                    break
                 }
             }
-            val (_, child) = this.children[pos]
-            return child.remove(key).also {
-                if (child.empty) {
-                    this.dirty = true
-                    this.children.removeAt(pos)
-                } else {
-                    this.children[pos] = child.max to child
-                }
-            }
-        }
-
-        override fun get(key: Int): RID? {
-            val pos = when (val pos = this.children.binarySearchBy(key) { (key, _) -> key }) {
-                in this.children.indices -> pos // key == key[pos]
-                else -> when (val pos = -pos - 1) {
-                    in this.children.indices -> pos // key[pos - 1] < key < key[pos]
-                    else -> return null // max{key} < key
-                }
-            }
-            return this.children[pos].second.get(key)
-        }
-
-        override fun get(low: Int, high: Int): Sequence<RID> {
-            val l = when (val pos = this.children.binarySearchBy(low) { (key, _) -> key }) {
-                in this.children.indices -> pos // low == key[pos]
-                else -> when (val pos = -pos - 1) {
-                    in this.children.indices -> pos // key[pos - 1] < low < key[pos]
-                    else -> return emptySequence() // max{key} < low
-                }
-            }
-            val r = when (val pos = this.children.binarySearchBy(high) { (key, _) -> key }) {
-                in this.children.indices -> pos // high == key[pos]
-                else -> when (val pos = -pos - 1) {
-                    in this.children.indices -> pos // key[pos - 1] < high < key[pos]
-                    else -> this.children.lastIndex // max{key} < high
-                }
-            }
-            return this.children
-                .slice(l..r).asSequence()
-                .flatMap { (_, child) -> child.get(low, high) }
         }
 
         override fun load() {
@@ -307,52 +297,34 @@ class Index(
                 }
             }
 
-        override fun put(key: Int, value: RID): RID? {
+        override fun put(key: Int, value: RID) {
             this.dirty = true
-            return when (val pos = this.records.binarySearchBy(key) { (key, _) -> key }) {
-                in this.records.indices -> {
-                    val (_, oldValue) = this.records[pos]
-                    this.records[pos] = key to value
-                    oldValue
+            val pos = this.records.upperBound(key) { (key, _) -> key }
+            this.records.add(pos, key to value)
+        }
+
+        override fun remove(key: Int, value: RID): Boolean {
+            for (i in this.records.equalRange(key) { (key, _) -> key }) {
+                if (this.records[i].second == value) {
+                    this.records.removeAt(i)
+                    return true
                 }
-                else -> {
-                    this.records.add(-pos - 1, key to value)
-                    null
-                }
+            }
+            return false
+        }
+
+        override fun get(key: Int): Sequence<RID> = sequence {
+            for (i in records.equalRange(key) { (key, _) -> key }) {
+                yield(records[i].second)
             }
         }
 
-        override fun remove(key: Int): RID? =
-            when (val pos = this.records.binarySearchBy(key) { (key, _) -> key }) {
-                in this.records.indices -> {
-                    this.dirty = true
-                    this.records.removeAt(pos).second
-                }
-                else -> null
+        override fun get(low: Int, high: Int): Sequence<RID> = sequence {
+            val l = records.lowerBound(low) { (key, _) -> key }
+            val r = records.upperBound(high) { (key, _) -> key }
+            for (i in l until r) {
+                yield(records[i].second)
             }
-
-        override fun get(key: Int): RID? =
-            when (val pos = this.records.binarySearchBy(key) { (key, _) -> key }) {
-                in this.records.indices -> this.records[pos].second
-                else -> null
-            }
-
-        override fun get(low: Int, high: Int): Sequence<RID> {
-            val l = when (val pos = this.records.binarySearchBy(low) { (key, _) -> key }) {
-                in this.records.indices -> pos
-                else -> when (val pos = -pos - 1) {
-                    in this.records.indices -> pos
-                    else -> return emptySequence()
-                }
-            }
-            val r = when (val pos = this.records.binarySearchBy(high) { (key, _) -> key }) {
-                in this.records.indices -> pos
-                else -> when (val pos = -pos - 2) {
-                    in this.records.indices -> pos
-                    else -> return emptySequence()
-                }
-            }
-            return this.records.slice(l..r).asSequence().map { (_, rid) -> rid }
         }
 
         override fun load() {

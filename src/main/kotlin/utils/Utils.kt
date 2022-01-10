@@ -3,7 +3,6 @@ package utils
 import java.lang.Float.floatToIntBits
 import java.lang.Float.intBitsToFloat
 import java.lang.Integer.min
-import java.nio.ByteBuffer
 import java.nio.charset.Charset
 import kotlin.experimental.and
 
@@ -170,3 +169,38 @@ operator fun <A : Comparable<A>, B : Comparable<B>>
 
 fun <T, R> Pair<T, T>.map(transform: (T) -> R): Pair<R, R> =
     transform(this.first) to transform(this.second)
+
+fun <T, R : Comparable<R>> List<T>.lowerBound(key: R, keySelector: (T) -> R): Int {
+    var first = 0
+    var count = this.size
+    while (count > 0) {
+        val step = count / 2
+        val index = first + step
+        if (keySelector(this[index]) < key) {
+            first = index + 1
+            count -= step + 1
+        } else {
+            count = step
+        }
+    }
+    return first
+}
+
+fun <T, R : Comparable<R>> List<T>.upperBound(key: R, keySelector: (T) -> R): Int {
+    var first = 0
+    var count = this.size
+    while (count > 0) {
+        val step = count / 2
+        val index = first + step
+        if (key >= keySelector(this[index])) {
+            first = index + 1
+            count -= step + 1
+        } else {
+            count = step
+        }
+    }
+    return first
+}
+
+fun <T, R : Comparable<R>> List<T>.equalRange(key: R, keySelector: (T) -> R): IntRange =
+    this.lowerBound(key, keySelector) until this.upperBound(key, keySelector)
