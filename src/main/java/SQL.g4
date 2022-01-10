@@ -38,7 +38,7 @@ db_statement
     : 'CREATE' 'DATABASE' Identifier    # create_db
     | 'DROP' 'DATABASE' Identifier      # drop_db
     | 'SHOW' 'DATABASES'                # show_dbs
-    | 'USE' Identifier                  # use_db                  
+    | 'USE' Identifier                  # use_db
     | 'SHOW' 'TABLES'                   # show_tables
 	| 'SHOW' 'INDEXES'					# show_indexes
     ;
@@ -118,7 +118,7 @@ where_clause
     ;
 
 column
-    : Identifier '.' Identifier
+    : (Identifier '.')? Identifier
     ;
 
 expression

@@ -377,9 +377,10 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
     override fun visitWhere_operator_expression(ctx: SQLParser.Where_operator_expressionContext?): Condition {
         val unqualifiedColumn = ctx!!.column().accept(this) as UnqualifiedColumn
         val operator = ctx.operator_().accept(this) as CompareOp
-        val value = ctx.expression().accept(this)!!
-        // TODO `= column`
-        return PredicateCondition(unqualifiedColumn, CompareWith(operator, value))
+        return when (val value = ctx.expression().accept(this)!!) {
+            is UnqualifiedColumn -> JoinCondition(unqualifiedColumn, value)
+            else -> PredicateCondition(unqualifiedColumn, CompareWith(operator, value))
+        }
     }
 
     override fun visitWhere_operator_select(ctx: SQLParser.Where_operator_selectContext?): Condition {

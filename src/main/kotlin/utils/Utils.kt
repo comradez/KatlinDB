@@ -204,3 +204,11 @@ fun <T, R : Comparable<R>> List<T>.upperBound(key: R, keySelector: (T) -> R): In
 
 fun <T, R : Comparable<R>> List<T>.equalRange(key: R, keySelector: (T) -> R): IntRange =
     this.lowerBound(key, keySelector) until this.upperBound(key, keySelector)
+
+/**
+ * [StackOverflow](https://stackoverflow.com/questions/53749357/idiomatic-way-to-create-n-ary-cartesian-product-combinations-of-several-sets-of/53763936#53763936)
+ */
+fun <T> cartesianProduct(vararg sets: List<T>): List<List<T>> =
+    sets.fold(listOf(emptyList())) { acc, set ->
+        acc.flatMap { list -> set.map { element -> list + element } }
+    }

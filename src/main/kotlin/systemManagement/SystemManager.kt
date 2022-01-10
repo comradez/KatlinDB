@@ -152,8 +152,10 @@ class SystemManager(private val workDir: String) : AutoCloseable {
         if (!file.exists()) {
             file.createNewFile()
             val writer = FileWriter(filename, true)
-            val records = selectRecords(metaHandler, tableInfo, listOf())
-            for ((_, record) in records) {
+            val records = recordHandler.openRecord(metaHandler.dbName, tableName).let { record ->
+                record.getItemRIDs().map { rid -> tableInfo.parseRecord(record.getRecord(rid)) }
+            }
+            for (record in records) {
                 val dataForDump = (record zip types).joinToString(",") { (data, type) ->
                     Converter.convertToString(
                         data,
@@ -358,8 +360,10 @@ class SystemManager(private val workDir: String) : AutoCloseable {
         val joinConditions = conditions.filterIsInstance<JoinCondition>()
         val results = tableNames.associateWith { tableName ->
             val tableInfo = metaHandler.getTable(tableName)
-            val record = this.recordHandler.openRecord(metaHandler.dbName, tableName)
-            val data = this.selectRecords(metaHandler, tableInfo, predicateConditions)
+            val data = this.selectRecords(
+                metaHandler,
+                tableInfo,
+                predicateConditions.filter { it.tableName == tableName })
                 .map { (_, row) -> row }
             SuccessResult(tableInfo.getHeader(), data.toList())
         }
@@ -616,7 +620,7 @@ class SystemManager(private val workDir: String) : AutoCloseable {
                 foreignColumnName,
                 rootPageId
             )
-            index.get(value as Int).ifEmpty {
+            if (index.get(value as Int).none()) {
                 throw ConstraintViolationError("Missing foreign key `${columnName}`: `${value}`")
             }
         }
@@ -780,7 +784,7 @@ class SystemManager(private val workDir: String) : AutoCloseable {
             joinPairs.getOrPut(tablePair) { mutableListOf() }.add(columnPair)
         }
         val tables = UnionFindSet(results.keys)
-        val result = joinPairs.entries.fold(null as SuccessResult?) { _, (tablePair, columnPairs) ->
+        joinPairs.entries.forEach { (tablePair, columnPairs) ->
             val (outerTableName, innerTableName) = tablePair
             val outerResult = results[tables.find(outerTableName)]!!
             val innerResult = results[tables.find(innerTableName)]!!
@@ -795,6 +799,18 @@ class SystemManager(private val workDir: String) : AutoCloseable {
                 results[joinedTable] = result
             }
         }
-        return result!!
+        val restTables = results.keys.asSequence()
+            .map { tableName -> tables.find(tableName) }
+            .distinct().toSet()
+        val product = cartesianProduct(*restTables.map { tableName ->
+            results[tableName]!!.data
+        }.toTypedArray())
+        val data = product.map { row -> row.flatten() }
+        val headers = restTables.flatMap { tableName -> results[tableName]!!.headers }
+        val result = SuccessResult(headers, data)
+        restTables.forEach { tableName ->
+            result.setAliases(results[tableName]!!.aliases.asSequence().map { (k, v) -> k to v })
+        }
+        return result
     }
 }
