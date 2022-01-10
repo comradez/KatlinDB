@@ -230,7 +230,7 @@ class SystemManager(private val workDir: String) : AutoCloseable {
     fun describeTable(tableName: String): QueryResult {
         val (_, tableInfo) = this.selectTable(tableName)
         val info = tableInfo.describe()
-        return SuccessResult(ColumnDescription.keys, info.map { it.values })
+        return SuccessResult(ColumnDescription.keys, info.map { it.values }, info.getOrNull(0)?.extra)
     }
 
     fun renameTable(oldName: String, newName: String) {

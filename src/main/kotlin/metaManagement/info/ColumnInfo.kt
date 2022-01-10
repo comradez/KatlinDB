@@ -7,7 +7,8 @@ import recordManagement.AttributeType
 class ColumnInfo(
     val type: AttributeType,
     val name: String,
-    val size: Int
+    val size: Int,
+    var nullable: Boolean = true
 ) {
     fun getColumnSize() : Int {
         return when (type) {
@@ -25,6 +26,6 @@ class ColumnInfo(
             AttributeType.FLOAT -> 0.0
             AttributeType.STRING -> ""
         }
-        return ColumnDescription(name, typePair, false, default)
+        return ColumnDescription(name, typePair, nullable, default)
     }
 }

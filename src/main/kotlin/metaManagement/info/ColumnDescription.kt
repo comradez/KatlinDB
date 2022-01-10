@@ -5,14 +5,14 @@ import recordManagement.AttributeType
 data class ColumnDescription(
     val name: String,
     val type: Pair<AttributeType, Int?>, // 类型，长度（长度是用于 String 的）
-    val isNull: Boolean,
+    var isNull: Boolean,
     val default: Any
 ) {
     var key: String? = null
-    var extra: String? = null
+    var extra: MutableList<String> = mutableListOf()
 
     companion object {
-        val keys: List<String> = listOf("Field", "Type", "Null", "Key", "Default", "Extra")
+        val keys: List<String> = listOf("Field", "Type", "Null", "Key", "Default")
     }
 
     val values: List<String>
@@ -25,6 +25,5 @@ data class ColumnDescription(
             if (this.isNull) "YES" else "NO", // null
             (this.key ?: ""), // key
             this.default.toString(), // default
-            (this.extra ?: "") // extra
         )
 }

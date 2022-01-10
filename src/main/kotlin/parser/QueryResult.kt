@@ -13,7 +13,7 @@ class EmptyResult : QueryResult()
 
 class ErrorResult(val errorMessage: String) : QueryResult()
 
-class SuccessResult(val headers: List<String>, val data: List<List<Any?>>) : QueryResult() {
+class SuccessResult(val headers: List<String>, val data: List<List<Any?>>, val extra: List<String>? = null) : QueryResult() {
     init {
         assert(this.data.all { row -> row.size == this.headers.size })
     }
@@ -66,9 +66,15 @@ class SuccessResult(val headers: List<String>, val data: List<List<Any?>>) : Que
 
     fun outputTable(): String {
         val prettyTable = PrettyTable(*this.headers.toTypedArray())
+        val extraMessage = this.data[0]
         for (line in this.data) {
             prettyTable.addRow(*line.map { toOutputForm(it) }.toTypedArray())
         }
-        return prettyTable.toString()
+        var table = prettyTable.toString()
+        table = table.plus("${this.data.size} Items got.").plus("\n")
+        this.extra?.forEach {
+            table = table.plus(it).plus("\n")
+        }
+        return table
     }
 }

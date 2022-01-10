@@ -18,32 +18,26 @@ class TableInfo(
     val unique = hashSetOf<String>()
     val indices = hashMapOf<String, Int>()
 
-    var columnMap = columns.associateBy { it.name }
-    var sizeList = columns.map { it.getColumnSize() }
-    var typeList = columns.map { it.type }
-    var totalSize = sizeList.sum()
-    var columnIndices = columns.mapIndexed { i, column -> column.name to i }.toMap()
-
-    private fun updateParams() {
-        columnMap = columns.associateBy { it.name }
-        sizeList = columns.map { it.getColumnSize() }
-        typeList = columns.map { it.type }
-        totalSize = sizeList.sum()
-        columnIndices = columns.mapIndexed { i, column -> column.name to i }.toMap()
-    }
+    val columnMap get() = columns.associateBy { it.name }
+    val sizeList get() = columns.map { it.getColumnSize() }
+    val typeList get() = columns.map { it.type }
+    val totalSize get() = sizeList.sum()
+    val columnIndices get() = columns.mapIndexed { i, column -> column.name to i }.toMap()
 
     fun describe(): List<ColumnDescription> {
         val descriptionMap = columns.associate { it.name to it.getDescription() }
         for (columnName in primary) {
             descriptionMap[columnName]?.key = "PRI"
+            descriptionMap[columnName]?.isNull = false
         }
         for (columnName in foreign.keys) {
             val key = descriptionMap[columnName]?.key
             descriptionMap[columnName]?.key = if (key != null) {
-                "MUL"
+                "PRI & FOR"
             } else {
                 "FOR"
             }
+            descriptionMap[columnName]?.isNull = false
             requireNotNull(descriptionMap[columnName]?.key)
         }
         for (columnName in unique) {
@@ -51,7 +45,20 @@ class TableInfo(
             descriptionMap[columnName]?.key = key ?: "UNI"
             requireNotNull(descriptionMap[columnName]?.key)
         }
-        return descriptionMap.values.toList()
+        for (columnName in indices.keys) {
+            val key = descriptionMap[columnName]?.key
+            descriptionMap[columnName]?.key = key ?: "IDX"
+            descriptionMap[columnName]?.isNull = false
+            requireNotNull(descriptionMap[columnName]?.key)
+        }
+        return descriptionMap.values.toList().also {
+            if (it.isNotEmpty()) {
+                it[0].extra.add("PRIMARY KEY (".plus(primary.joinToString(", ")).plus(")"))
+                it[0].extra.addAll(foreign.map { (columnName, foreignInfo) ->
+                    "FOREIGN KEY ($columnName) REFERENCES ${foreignInfo.first}(${foreignInfo.second})"
+                })
+            }
+        }
     }
 
     fun insertColumn(column: ColumnInfo) {
@@ -59,7 +66,6 @@ class TableInfo(
             throw ColumnAlreadyExistsError(this.name, column.name)
         }
         columns.add(column)
-        updateParams()
     }
 
     fun removeColumn(columnName: String): Int {

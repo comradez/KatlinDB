@@ -269,8 +269,9 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
                     // 实际上是 Pair<AttributeType, Int>
                     val type = _type as AttributeType
                     val size = _size as Int
+                    val nullable = field.Null() == null
                     nameSet.add(name)
-                    columns.add(ColumnInfo(type, name, size))
+                    columns.add(ColumnInfo(type, name, size, nullable))
 //                    nameToColumn[name] = ColumnInfo(type, name, size)
                 }
                 is SQLParser.Primary_key_fieldContext -> {
@@ -313,9 +314,10 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val (_type, _size) = ctx.type_().accept(this)!! as Pair<*, *>
         val type = _type as AttributeType
         val size = _size as Int
+        val nullable = ctx.Null() == null
         // 虽然下边 visitType_ 返回的是 Pair<AttributeType, Int> 但是 accept 出来的东西还是 Any
         // 只能用最丑陋的方法强行 cast
-        return ColumnInfo(type, name, size)
+        return ColumnInfo(type, name, size, nullable)
     }
 
     override fun visitPrimary_key_field(ctx: SQLParser.Primary_key_fieldContext?): List<*> {
