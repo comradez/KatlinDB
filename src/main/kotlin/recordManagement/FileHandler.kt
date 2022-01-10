@@ -176,6 +176,8 @@ class FileHandler(_file: File, _bufferManager: BufferManager) {
         val rid = nextAvailableRID()
         val (pageId, slotId) = rid
         config.recordNumber += 1 // 记录条数 + 1
+        configChanged = true
+        println(config.recordNumber)
 //        println("file is ${file.name}, recordLength is ${config.recordLength}, pageId is $pageId, slotId is $slotId")
         markOccupied(rid)
         val page = bufferManager.readPage(file, pageId)

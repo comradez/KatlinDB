@@ -120,7 +120,11 @@ class RecordHandler(
     private fun closeFile(fileHandler: FileHandler): Boolean {
         val file = fileHandler.file
         if (fileHandler.configChanged) {
-            bufferManager.markDirty(file, 0)
+            val headerPage = bufferManager.readPage(file, 0)
+            Json.encodeToString(fileHandler.config)
+                .toByteArray()
+                .copyInto(headerPage) // 将元信息写入头部页
+            bufferManager.markDirty(file, 0) // 标记写回
         } // 标记表头写回
         bufferManager.closeFile(file)
         return true

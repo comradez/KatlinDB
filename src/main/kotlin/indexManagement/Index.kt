@@ -30,6 +30,7 @@ class Index(
         when (this.root.children.isEmpty()) {
             false -> this.root.put(key, value).also {
                 if (this.root.size > PAGE_SIZE) {
+                    println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
                     this.root = InternalNode(
                         this.fileHandler.freshPage(),
                         this.fileHandler,

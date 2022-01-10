@@ -44,10 +44,11 @@ fun executeSqlFile(filename: String, workDir: String) {
     } else if (!file.isFile) {
         println("FileError: $file is not a file.")
     }
-    val manager = SystemManager(workDir)
-    val results = manager.execute(file.readText())
-    for (result in results) {
-        showResult(result)
+    SystemManager(workDir).use { manager ->
+        val results = manager.execute(file.readText())
+        for (result in results) {
+            showResult(result)
+        }
     }
 }
 
@@ -55,15 +56,15 @@ fun showResult(result: QueryResult) {
     when (result) {
         is SuccessResult -> {
             print(result.outputTable() ?: "(No output)\n")
-            println("${result.timeCost?.div(1000)} ms spent.")
+            println("${result.timeCost?.div(1e6) ?: 0} ms spent.")
         }
         is EmptyResult -> {
             println("(No output)\n" +
-                    "${result.timeCost?.div(1000)} ms spent.")
+                    "${result.timeCost?.div(1e6) ?: 0} ms spent.")
         }
         is ErrorResult -> {
             println("Operation failed with error message ${result.errorMessage}\n" +
-                    "${result.timeCost} ms spent.")
+                    "${result.timeCost?.div(1e6) ?: 0} ms spent.")
         }
     }
 }
