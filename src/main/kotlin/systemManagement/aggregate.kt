@@ -40,7 +40,7 @@ fun aggregate(
             else -> error(first)
         }
         Aggregator.SUM -> when (val first = column.first()) {
-            is Int -> column.sumOf { (it as Int).toLong() }
+            is Int -> column.sumOf { (it as Int).toLong() }.toInt()
             is Float -> column.sumOf { (it as Float).toDouble() }
             is String -> column.reduce { acc, ele -> acc as String + ele as String }
             else -> error(first)

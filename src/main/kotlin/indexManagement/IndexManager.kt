@@ -38,7 +38,7 @@ class IndexManager(
         return tables.getOrPut(tableName) { mutableMapOf() }
             .getOrPut(columnName) {
                 Index(handler, rootPageId).also { it.load() }
-            }.also { it.debug() }
+            } // .also { it.debug() }
     }
 
     fun closeIndex(databaseName: String, tableName: String, columnName: String) {

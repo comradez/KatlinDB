@@ -60,6 +60,7 @@ class HasPattern(_pattern: String) : Predicate {
             .replace("%?", "\n")
             .replace("%_", "\b")
         pattern = Regex.escape(pattern)
+        pattern = pattern.substring(2 until pattern.length - 2)
         pattern = pattern
             .replace("%", ".*")
             .replace("\\?", ".")
