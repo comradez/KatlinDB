@@ -8,20 +8,17 @@ class DatabaseNotExistsError(databaseName: String) :
 
 class NoUsingDatabaseError : Exception("No database selected.")
 
-class IndexAlreadyExistsError(indexName: String) :
-    Exception("Index `${indexName}` already exists.")
+class IndexAlreadyExistsError(tableName: String, columnName: String) :
+    Exception("Index `${tableName}.${columnName}` already exists.")
 
-class IndexNotExistsError(indexName: String) :
-    Exception("Index `${indexName}` does not exist.")
+class IndexNotExistsError(tableName: String, columnName: String) :
+    Exception("Index `${tableName}.${columnName}` does not exist.")
 
 class TableAlreadyExistsError(tableName: String) :
     Exception("Table `${tableName}` already exists.")
 
 class TableNotExistsError(tableName: String) :
     Exception("Table `${tableName}` does not exist.")
-
-class ColumnAlreadyIndexedError(tableName: String, columnName: String) :
-    Exception("Column `${columnName}` in table `${tableName}` already has an index.")
 
 class ColumnAlreadyExistsError(tableName: String, columnName: String) :
     Exception("Column `${columnName}` in table `${tableName}` already exists.")

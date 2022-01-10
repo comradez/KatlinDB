@@ -22,7 +22,7 @@ import java.util.*
 import kotlin.math.max
 import kotlin.math.min
 
-class SystemManager(private val workDir: String) {
+class SystemManager(private val workDir: String) : AutoCloseable {
     init {
         with(File(workDir)) {
             this.mkdirs()
@@ -36,10 +36,11 @@ class SystemManager(private val workDir: String) {
     private val indexManager = IndexManager(this.bufferManager, this.workDir)
     private val metaManager = MetaManager(this.fileManager, this.workDir)
     private val visitor = DatabaseVisitor(this)
-    private val databases get() =  File(this.workDir)
-        .list { dir, _ -> dir.isDirectory }
-        .orEmpty()
-        .toMutableSet()
+    private val databases
+        get() = File(this.workDir)
+            .list { dir, _ -> dir.isDirectory }
+            .orEmpty()
+            .toMutableSet()
 
     var selectedDatabase: String? = null
     private val selectedDatabaseMeta: MetaHandler
@@ -100,6 +101,14 @@ class SystemManager(private val workDir: String) {
                 throw BadColumnIdentifier("Unknown column `${column}`")
             }
         }
+    }
+
+    override fun close() {
+        this.metaManager.close()
+        this.indexManager.close()
+        this.recordHandler.close()
+        this.bufferManager.close()
+        this.fileManager.close()
     }
 
     fun execute(sql: String): List<QueryResult> {
@@ -298,7 +307,21 @@ class SystemManager(private val workDir: String) {
         groupBy: UnqualifiedColumn? = null,
         limit: Int? = null,
         offset: Int? = null
-    ): QueryResult {
+    ): SuccessResult {
+        val result = this.selectRecords(selectors, tableNames, conditions, groupBy)
+        var data = result.data.asSequence().drop(offset ?: 0)
+        if (limit != null) {
+            data = data.take(limit)
+        }
+        return SuccessResult(result.headers, data.toList())
+    }
+
+    fun selectRecords(
+        selectors: List<Selector>,
+        tableNames: Set<String>,
+        conditions: List<Condition> = listOf(),
+        groupBy: UnqualifiedColumn? = null
+    ): SuccessResult {
         assert(selectors.isNotEmpty())
         val metaHandler = this.selectedDatabaseMeta
         val tableInfos = tableNames.map { tableName ->
@@ -334,8 +357,8 @@ class SystemManager(private val workDir: String) {
         val results = tableNames.associateWith { tableName ->
             val tableInfo = metaHandler.getTable(tableName)
             val record = this.recordHandler.openRecord(metaHandler.dbName, tableName)
-            val data = this.selectIndices(metaHandler, tableInfo, predicateConditions)
-                .map { rid -> tableInfo.parseRecord(record.getRecord(rid)) }
+            val data = this.selectRecords(metaHandler, tableInfo, predicateConditions)
+                .map { (_, row) -> row }
             SuccessResult(tableInfo.getHeader(), data.toList())
         }
         val result = results.values.singleOrNull()
@@ -478,11 +501,9 @@ class SystemManager(private val workDir: String) {
     }
 
     fun addForeign(tableName: String, columnName: String, foreign: Pair<String, String>) {
+        val (metaHandler, _, _) = this.selectColumn(tableName, columnName)
         val (foreignTableName, foreignColumnName) = foreign
-        val (metaHandler, foreignTableInfo) = this.selectColumn(foreignTableName, foreignColumnName)
-        if (columnName in metaHandler.dbInfo.tableMap) {
-            throw ColumnAlreadyIndexedError(tableName, columnName)
-        }
+        val (_, foreignTableInfo, _) = this.selectColumn(foreignTableName, foreignColumnName)
         metaHandler.addForeign(tableName, columnName, foreign)
         if (!foreignTableInfo.existIndex(foreignColumnName)) {
             this.createIndex(foreignTableName, foreignColumnName)
@@ -491,31 +512,26 @@ class SystemManager(private val workDir: String) {
 
     fun dropForeign(tableName: String, columnName: String) {
         val (metaHandler, tableInfo, _) = this.selectColumn(tableName, columnName)
-        val (foreignTableName, foreignColumnName) = tableInfo.foreign[columnName]
-            ?: throw NotForeignKeyColumnError(tableName, columnName)
+        if (columnName !in tableInfo.foreign) {
+            throw NotForeignKeyColumnError(tableName, columnName)
+        }
         metaHandler.removeForeign(tableName, columnName)
-        this.dropIndex(foreignTableName, foreignColumnName)
     }
 
     fun showIndices(): List<String> {
         val metaHandler = this.selectedDatabaseMeta
-        return metaHandler.dbInfo.indexMap.keys.toList()
+        return metaHandler.dbInfo.indexMap.flatMap { (tableName, columnNames) ->
+            columnNames.asSequence().map { columnName -> "${tableName}.${columnName}" }
+        }
     }
 
-    fun createIndex(
-        tableName: String,
-        columnName: String,
-        indexName: String = "${tableName}.${columnName}"
-    ) {
+    fun createIndex(tableName: String, columnName: String) {
         val (metaHandler, tableInfo, _) = this.selectColumn(tableName, columnName)
-        if (metaHandler.existIndex(indexName)) {
-            throw IndexAlreadyExistsError(indexName)
-        }
         if (tableInfo.existIndex(columnName)) {
-            throw ColumnAlreadyIndexedError(tableName, columnName)
+            throw IndexAlreadyExistsError(tableName, columnName)
         }
-        metaHandler.createIndex(indexName, tableName, columnName)
-        val index = this.indexManager.createIndex(metaHandler.dbName, tableName, indexName)
+        metaHandler.createIndex(tableName, columnName)
+        val index = this.indexManager.createIndex(metaHandler.dbName, tableName, columnName)
         tableInfo.createIndex(columnName, index.rootPageId)
         val columnIndex = tableInfo.getColumnIndex(columnName)
         val record = this.recordHandler.openRecord(metaHandler.dbName, tableName)
@@ -526,34 +542,13 @@ class SystemManager(private val workDir: String) {
         }
     }
 
-    fun renameIndex(oldName: String, newName: String) {
-        val metaHandler = this.selectedDatabaseMeta
-        if (!metaHandler.existIndex(oldName)) {
-            throw IndexNotExistsError(oldName)
-        }
-        if (metaHandler.existIndex(newName)) {
-            throw IndexAlreadyExistsError(newName)
-        }
-        val (tableName, _) = metaHandler.getIndexInfo(oldName)
-        val tableInfo = metaHandler.getTable(tableName)
-        tableInfo.renameIndex(oldName, newName)
-        metaHandler.renameIndex(oldName, newName)
-    }
-
     fun dropIndex(tableName: String, columnName: String) {
-        this.selectColumn(tableName, columnName)
-        this.dropIndex("${tableName}.${columnName}")
-    }
-
-    fun dropIndex(indexName: String) {
-        val metaHandler = this.selectedDatabaseMeta
-        if (!metaHandler.existIndex(indexName)) {
-            throw IndexNotExistsError(indexName)
+        val (metaHandler, tableInfo) = this.selectColumn(tableName, columnName)
+        if (!tableInfo.existIndex(columnName)) {
+            throw IndexNotExistsError(tableName, columnName)
         }
-        val (tableName, _) = metaHandler.getIndexInfo(indexName)
-        val tableInfo = metaHandler.getTable(tableName)
-        tableInfo.dropIndex(indexName)
-        metaHandler.dropIndex(indexName)
+        metaHandler.dropIndex(tableName, columnName)
+        tableInfo.dropIndex(columnName)
     }
 
     private fun isDuplicated(
@@ -729,10 +724,11 @@ class SystemManager(private val workDir: String) {
             val index = this.indexManager.openIndex(
                 metaHandler.dbName,
                 tableInfo.name,
-                "${tableInfo.name}.${columnName}",
+                columnName,
                 tableInfo.indices[columnName]!!
             )
             val (l, r) = boundary
+            println("$l .. $r")
             index.get(l, r).toSet()
         }.reduceOrNull(Set<RID>::intersect)?.asSequence() ?: run {
             val record = this.recordHandler.openRecord(metaHandler.dbName, tableInfo.name)
@@ -747,6 +743,7 @@ class SystemManager(private val workDir: String) {
     ): Sequence<Pair<RID, List<Any?>>> {
         val record = this.recordHandler.openRecord(metaHandler.dbName, tableInfo.name)
         val test = selectIndices(metaHandler, tableInfo, conditions).toList()
+        println("size .. ${test.size}")
         val values = this.selectIndices(metaHandler, tableInfo, conditions)
             .map { rid -> rid to tableInfo.parseRecord(record.getRecord(rid)) }
         val predicates = conditions.map { condition ->

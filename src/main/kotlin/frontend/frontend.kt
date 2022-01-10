@@ -8,8 +8,7 @@ import systemManagement.SystemManager
 import java.io.File
 import java.util.*
 
-fun enterCommandLineEnvironment(workDir: String) {
-    val manager = SystemManager(workDir)
+fun enterCommandLineEnvironment(workDir: String) = SystemManager(workDir).use { manager ->
     val scanner = Scanner(System.`in`)
     var command: String
     var nextLine: String

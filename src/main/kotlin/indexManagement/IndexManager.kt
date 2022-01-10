@@ -3,7 +3,7 @@ package indexManagement
 import pagedFile.BufferManager
 import pagedFile.FileHandler
 
-private typealias Table = MutableMap<String, Index> // indexName => index
+private typealias Table = MutableMap<String, Index> // columnName => index
 private typealias Database = Pair<FileHandler, MutableMap<String, Table>> // tableName => table
 
 /**
@@ -12,33 +12,38 @@ private typealias Database = Pair<FileHandler, MutableMap<String, Table>> // tab
 class IndexManager(
     _bufferManager: BufferManager,
     _workDir: String
-) {
+) : AutoCloseable {
     private val bufferManager = _bufferManager
     private val workDir = _workDir
     private val databases = mutableMapOf<String, Database>()
 
-    fun createIndex(databaseName: String, tableName: String, indexName: String): Index {
+    override fun close() {
+        this.databases.forEach { (database, _) -> this.closeDatabase(database) }
+    }
+
+    fun createIndex(databaseName: String, tableName: String, columnName: String): Index {
         val (handler, tables) = this.getDatabase(databaseName)
         return Index(handler, handler.freshPage()).also { index ->
-            tables.getOrPut(tableName) { mutableMapOf() }[indexName] = index
+            tables.getOrPut(tableName) { mutableMapOf() }[columnName] = index
         }
     }
 
     fun openIndex(
         databaseName: String,
         tableName: String,
-        indexName: String,
+        columnName: String,
         rootPageId: Int
     ): Index {
         val (handler, tables) = this.getDatabase(databaseName)
-        return tables[tableName]!!.getOrPut(indexName) {
-            Index(handler, rootPageId).also { it.load() }
-        }
+        return tables.getOrPut(tableName) { mutableMapOf() }
+            .getOrPut(columnName) {
+                Index(handler, rootPageId).also { it.load() }
+            }.also { it.debug() }
     }
 
-    fun closeIndex(databaseName: String, tableName: String, indexName: String) {
+    fun closeIndex(databaseName: String, tableName: String, columnName: String) {
         val (_, tables) = this.getDatabase(databaseName)
-        tables[tableName]!!.remove(indexName)?.dump()
+        tables[tableName]!!.remove(columnName)?.dump()
     }
 
     fun closeDatabase(databaseName: String) {

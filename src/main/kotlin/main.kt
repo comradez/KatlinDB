@@ -26,15 +26,7 @@ fun main(args: Array<String>) {
     try {
         val commandLine = parser.parse(options, args)
         val workDirectory = if (commandLine.hasOption("workdir")) {
-            val directory = commandLine.getOptionValue("workdir")
-            val workDir = File(directory)
-            if (workDir.isDirectory) {
-                println("Info: working in $directory")
-                directory
-            } else {
-                println("Warning: the given directory $directory is invalid, falling back to current directory")
-                Paths.get("").toAbsolutePath().toString()
-            }
+            commandLine.getOptionValue("workdir")
         } else {
             println("Info: working directory not specified, using current directory")
             Paths.get("").toAbsolutePath().toString()

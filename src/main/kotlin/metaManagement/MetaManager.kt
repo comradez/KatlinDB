@@ -5,10 +5,14 @@ import pagedFile.FileManager
 class MetaManager(
     _manager: FileManager,
     _homeDirectory: String = "./"
-) {
+) : AutoCloseable {
     private val manager = _manager
     private val homeDirectory = _homeDirectory
     private val metaList = hashMapOf<String, MetaHandler>()
+
+    override fun close() {
+        metaList.values.forEach { it.close() }
+    }
 
     fun openMeta(dbName: String) : MetaHandler {
         val handler = metaList[dbName]
@@ -19,9 +23,8 @@ class MetaManager(
         }
     }
 
-    fun closeMeta(dbName: String) : Boolean {
-        metaList[dbName]?.close()
-        return dbName in metaList.keys
+    fun closeMeta(dbName: String) {
+        metaList.remove(dbName)?.close()
     }
 
     fun removeAll(dbName: String) {

@@ -28,3 +28,9 @@ build/
 # idea config & gradle config
 .gradle
 .idea
+
+# testcases
+/test
+
+# debug dir
+/temp

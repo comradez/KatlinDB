@@ -24,7 +24,12 @@ class Converter {
                 val value = triple.second
                 when (type) {
                     AttributeType.INT -> writeIntToByteArray(value as Int? ?: Int.MIN_VALUE, record, offset)
-                    AttributeType.FLOAT -> writeFloatToByteArray(value as Float? ?: Float.NaN, record, offset)
+                    AttributeType.FLOAT -> writeFloatToByteArray(
+                        when (value) {
+                            is Int -> value.toFloat()
+                            else -> value as Float? ?: Float.NaN
+                        }, record, offset
+                    )
                     AttributeType.STRING -> writeStringToByteArray(value as String? ?: "", record, offset)
                     AttributeType.LONG -> writeLongToByteArray(
                         if (value != null) { Date.valueOf(value as String).time } else { Long.MIN_VALUE },

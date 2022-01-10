@@ -107,7 +107,7 @@ class TableInfo(
         indices.remove(oldName)?.let { indices[newName] = it }
     }
 
-    fun dropIndex(indexName: String) {
-        indices.remove(indexName)
+    fun dropIndex(columnName: String) {
+        indices.remove(columnName)
     }
 }

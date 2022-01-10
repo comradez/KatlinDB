@@ -61,20 +61,17 @@ class MetaHandler(
         return dbInfo.tableMap[tableName] ?: throw InternalError("No table $tableName in database $dbName found.")
     }
 
-    fun existIndex(indexName: String) = indexName in dbInfo.indexMap.keys
+    fun existIndex(tableName: String, columnName: String) =
+        this.dbInfo.indexMap[tableName]?.contains(columnName) ?: false
 
-    fun createIndex(indexName: String, tableName: String, columnName: String) {
-        dbInfo.createIndex(indexName, tableName, columnName)
+    fun createIndex(tableName: String, columnName: String) {
+        dbInfo.createIndex(tableName, columnName)
         dump()
     }
 
-    fun dropIndex(indexName: String) {
-        dbInfo.dropIndex(indexName)
+    fun dropIndex(tableName: String, columnName: String) {
+        dbInfo.dropIndex(tableName, columnName)
         dump()
-    }
-
-    fun getIndexInfo(indexName: String): Pair<String, String> {
-        return dbInfo.getIndexInfo(indexName)
     }
 
     fun setPrimary(tableName: String, primary: List<String>) {
@@ -107,18 +104,8 @@ class MetaHandler(
     fun renameTable(tableName: String, newTableName: String) {
         val table = dbInfo.tableMap.remove(tableName) ?: throw InternalError("No table $tableName in database $dbName found.")
         dbInfo.tableMap[newTableName] = table
-        for ((indexName, pair) in dbInfo.indexMap) {
-            val (indexTableName, indexColumnName) = pair
-            if (indexTableName == tableName) {
-                dbInfo.indexMap[indexName] = newTableName to indexColumnName
-            }
-        }
+        dbInfo.indexMap.remove(tableName)?.let { dbInfo.indexMap[newTableName] = it }
         dump()
-    }
-
-    fun renameIndex(indexName: String, newIndexName: String) {
-        val indexInfo = dbInfo.indexMap.remove(indexName) ?: throw InternalError("No index $indexName in database $dbName found.")
-        dbInfo.indexMap[newIndexName] = indexInfo
     }
 
     fun close() {

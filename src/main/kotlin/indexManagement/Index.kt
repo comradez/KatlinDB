@@ -22,6 +22,9 @@ class Index(
 
     fun load() = this.root.load()
     fun dump() = this.root.dump()
+    fun debug() {
+        this.root.debug()
+    }
 
     fun put(key: Int, value: RID): RID? =
         when (this.root.children.isEmpty()) {
@@ -39,6 +42,7 @@ class Index(
                 }
             }
             true -> {
+                println("haha")
                 this.root.dirty = true
                 this.root.subtreeDirty = true
                 val node = ExternalNode(
@@ -58,7 +62,7 @@ class Index(
     fun get(key: Int) = this.root.get(key)
 
     /**
-     * @return index 在 [[low], [high]) 内的 [RID]
+     * @return index 在 [[low], [high]] 内的 [RID]
      */
     fun get(low: Int, high: Int) = this.root.get(low, high)
 
@@ -88,6 +92,8 @@ class Index(
                 this.fileHandler.updatePage(this.pageId, this.bytes)
             }
         }
+
+        abstract fun debug()
 
         abstract fun split(): TreeNode
 
@@ -203,7 +209,7 @@ class Index(
                 in this.children.indices -> pos // low == key[pos]
                 else -> when (val pos = -pos - 1) {
                     in this.children.indices -> pos // key[pos - 1] < low < key[pos]
-                    else -> return sequenceOf() // max{key} < low
+                    else -> return emptySequence() // max{key} < low
                 }
             }
             val r = when (val pos = this.children.binarySearchBy(high) { (key, _) -> key }) {
@@ -236,6 +242,11 @@ class Index(
             if (this.subtreeDirty) {
                 this.children.forEach { (_, child) -> child.dump() }
             }
+        }
+
+        override fun debug() {
+            println("${this.pageId}: ${this.children.map { (key, child) -> "$key -> ${child.pageId}" }}")
+            this.children.forEach { (_, child) -> child.debug() }
         }
 
         override fun split(): InternalNode {
@@ -328,13 +339,19 @@ class Index(
         override fun get(low: Int, high: Int): Sequence<RID> {
             val l = when (val pos = this.records.binarySearchBy(low) { (key, _) -> key }) {
                 in this.records.indices -> pos
-                else -> -pos
+                else -> when (val pos = -pos - 1) {
+                    in this.records.indices -> pos
+                    else -> return emptySequence()
+                }
             }
             val r = when (val pos = this.records.binarySearchBy(high) { (key, _) -> key }) {
                 in this.records.indices -> pos
-                else -> -pos - 1
+                else -> when (val pos = -pos - 2) {
+                    in this.records.indices -> pos
+                    else -> return emptySequence()
+                }
             }
-            return this.records.slice(l until r).asSequence().map { (_, rid) -> rid }
+            return this.records.slice(l..r).asSequence().map { (_, rid) -> rid }
         }
 
         override fun load() {
@@ -352,6 +369,10 @@ class Index(
                 )
                 this.records.add(key to rid)
             }
+        }
+
+        override fun debug() {
+            println("leaf ${this.pageId}: ${this.records.map { (key, _) -> key }}")
         }
 
         override fun split(): ExternalNode {

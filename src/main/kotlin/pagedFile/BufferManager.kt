@@ -6,7 +6,7 @@ import utils.PAGE_SIZE
 import java.io.File
 import java.io.FileNotFoundException
 
-class BufferManager(private val fileManager: FileManager) {
+class BufferManager(private val fileManager: FileManager) : AutoCloseable {
     private val findReplace = FindReplace(PAGE_NUMBER)
 
     private val pageBuffers = arrayOfNulls<BufferType>(PAGE_NUMBER) // 页缓冲区
@@ -21,6 +21,13 @@ class BufferManager(private val fileManager: FileManager) {
     // (文件, 页号) -> 页缓冲区下标
     private val fileCachePages = HashMap<File, HashSet<Int>>()
     // 记录一个文件的哪些页在缓存中
+
+    override fun close() {
+        this.fileCachePages.forEach { (file, pages) ->
+            pages.forEach { this.writeBack(it) }
+            this.fileManager.closeFile(file)
+        }
+    }
 
     /**
      * @brief 根据文件名创建文件

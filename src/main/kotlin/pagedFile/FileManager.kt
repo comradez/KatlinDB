@@ -7,8 +7,12 @@ import utils.PAGE_SIZE
 import java.io.File
 import java.io.RandomAccessFile
 
-class FileManager {
+class FileManager : AutoCloseable {
     private val fileTable = arrayOfNulls<File>(MAX_FILE_NUMBER)
+
+    override fun close() {
+        this.fileTable.fill(null)
+    }
 
     /**
      * @brief 依据文件名创建文件

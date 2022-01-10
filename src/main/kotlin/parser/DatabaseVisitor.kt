@@ -204,8 +204,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val tableName = ctx!!.Identifier().toString()
         val columnNames = (ctx.identifiers().accept(this) as List<*>).map { it as String }
         for (columnName in columnNames) {
-            val indexName = "$tableName.$columnName"
-            manager.createIndex(tableName, columnName, indexName)
+            manager.createIndex(tableName, columnName)
         }
     }
 
@@ -213,8 +212,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val tableName = ctx!!.Identifier().toString()
         val columnNames = (ctx.identifiers().accept(this) as List<*>).map { it as String }
         for (columnName in columnNames) {
-            val indexName = "$tableName.$columnName"
-            manager.dropIndex(indexName)
+            manager.dropIndex(tableName, columnName)
         }
     }
 

@@ -14,7 +14,7 @@ private typealias Database = MutableMap<String, FileHandler> // table name => re
 class RecordHandler(
     private val bufferManager: BufferManager,
     private val workDir: String
-) {
+) : AutoCloseable {
     private val databases = mutableMapOf<String, Database>()
 
     private fun fileName(databaseName: String, tableName: String) =
@@ -146,5 +146,9 @@ class RecordHandler(
         this.databases.remove(databaseName)?.values?.forEach { fileHandler ->
             this.closeFile(fileHandler)
         }
+    }
+
+    override fun close() {
+        this.databases.forEach { (database, _) -> this.closeDatabase(database) }
     }
 }

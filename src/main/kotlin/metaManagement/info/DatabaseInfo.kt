@@ -9,7 +9,7 @@ class DatabaseInfo(
     private val tables: List<TableInfo>
 ) {
     val tableMap = tables.associateBy { it.name }.toMutableMap()
-    val indexMap = hashMapOf<String, Pair<String, String>>()
+    val indexMap = mutableMapOf<String, MutableSet<String>>() // tableName => [columnName, ...]
 
     fun insertTable(table: TableInfo) {
         if (table.name !in tableMap.keys) {
@@ -33,22 +33,12 @@ class DatabaseInfo(
         return table?.removeColumn(columnName) ?: throw InternalError("Table $tableName should exist.")
     }
 
-    fun createIndex(indexName: String, tableName: String, columnName: String) {
-        if (indexName !in indexMap.keys) {
-            indexMap[indexName] = tableName to columnName
-        } else {
-            throw InternalError("Index $indexName already exists.")
-        }
+    fun createIndex(tableName: String, columnName: String) {
+        this.indexMap.getOrPut(tableName) { mutableSetOf() }.add(columnName)
     }
 
-    fun dropIndex(indexName: String) {
-        val index = indexMap[indexName]
-        index ?: throw InternalError("Index $indexName should exist.")
-    }
-
-    fun getIndexInfo(indexName: String): Pair<String, String> {
-        val index = indexMap[indexName]
-        return index ?: throw InternalError("Index $indexName should exist.")
+    fun dropIndex(tableName: String, columnName: String) {
+        this.indexMap[tableName]?.remove(columnName)
     }
 
     fun buildColumnToTableMap(tableNames: List<String>): Map<String, List<TableInfo>> {
