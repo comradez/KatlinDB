@@ -152,6 +152,14 @@ class BufferManager(private val fileManager: FileManager) {
         }
     }
 
+    fun forceWriteBack(file: File, pageId: Int) {
+        val filePagePair = Pair(file, pageId)
+        val index = filePageToIndex.get(filePagePair)
+        if (index != null) {
+            writeBack(index)
+        }
+    }
+
     /**
      * @brief 在 file 文件的末尾追加一个空白的页
      * @param file 文件对象

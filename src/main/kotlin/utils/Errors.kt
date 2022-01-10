@@ -27,7 +27,7 @@ class ColumnAlreadyExistsError(tableName: String, columnName: String) :
     Exception("Column `${columnName}` in table `${tableName}` already exists.")
 
 class ColumnNotExistsError(tableName: String, columnName: String) :
-    Exception("Column `${columnName}` in table `${tableName}` does not exists.")
+    Exception("Column `${columnName}` in table `${tableName}` does not exist.")
 
 class NotForeignKeyColumnError(tableName: String, columnName: String) :
     Exception("Column `${columnName}` in table `${tableName}` is not a foreign key.")
@@ -40,5 +40,11 @@ class ConstraintViolationError(override val message: String) : Exception(message
 class IllFormSelectError(override val message: String) : Exception(message)
 
 class BadColumnIdentifier(override val message: String) : Exception(message)
+
+class FileAlreadyExistsError(filename: String) :
+    Exception("Target file `$filename` already exists.")
+
+class FileNotExistError(filename: String) :
+    Exception("Target file `$filename` does not exist or is not a file.")
 
 class InternalError(override val message: String) : Exception(message)

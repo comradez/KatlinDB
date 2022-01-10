@@ -36,7 +36,7 @@ class SystemManager(private val workDir: String) {
     private val indexManager = IndexManager(this.bufferManager, this.workDir)
     private val metaManager = MetaManager(this.fileManager, this.workDir)
     private val visitor = DatabaseVisitor(this)
-    private val databases = File(this.workDir)
+    private val databases get() =  File(this.workDir)
         .list { dir, _ -> dir.isDirectory }
         .orEmpty()
         .toMutableSet()
@@ -130,7 +130,7 @@ class SystemManager(private val workDir: String) {
                 insertRecord(tableName, dataForInsert)
             }
         } else {
-            throw InternalError("Target doesn't exist or is not a file.")
+            throw FileNotExistError(filename)
         }
     }
 
@@ -155,7 +155,7 @@ class SystemManager(private val workDir: String) {
             }
             writer.close()
         } else {
-            throw InternalError("Target already exists.")
+            throw FileAlreadyExistsError(filename)
         }
     }
 
@@ -747,7 +747,6 @@ class SystemManager(private val workDir: String) {
     ): Sequence<Pair<RID, List<Any?>>> {
         val record = this.recordHandler.openRecord(metaHandler.dbName, tableInfo.name)
         val test = selectIndices(metaHandler, tableInfo, conditions).toList()
-        println(test.size)
         val values = this.selectIndices(metaHandler, tableInfo, conditions)
             .map { rid -> rid to tableInfo.parseRecord(record.getRecord(rid)) }
         val predicates = conditions.map { condition ->

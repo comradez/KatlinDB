@@ -3,6 +3,7 @@ package parser
 import org.sk.PrettyTable
 import utils.IllFormSelectError
 import utils.trimListToPrint
+import java.sql.Date
 
 abstract class QueryResult {
     var timeCost: Long? = null
@@ -52,10 +53,21 @@ class SuccessResult(val headers: List<String>, val data: List<List<Any?>>) : Que
         return this.data.asSequence().map { it.first() }
     }
 
+    private fun toOutputForm(data: Any?): String {
+        return when (data) {
+            is Long -> Date(data).toString()
+            is Int -> data.toString()
+            is String -> data
+            is Float -> data.toString()
+            is Double -> data.toString()
+            else -> "NULL"
+        }
+    }
+
     fun outputTable(): String {
         val prettyTable = PrettyTable(*this.headers.toTypedArray())
         for (line in this.data) {
-            prettyTable.addRow(*line.map { it.toString() }.toTypedArray())
+            prettyTable.addRow(*line.map { toOutputForm(it) }.toTypedArray())
         }
         return prettyTable.toString()
     }

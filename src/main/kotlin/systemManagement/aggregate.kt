@@ -20,7 +20,7 @@ fun aggregate(
     }
     return when (aggregator) {
         Aggregator.AVERAGE -> when (val first = column.first()) {
-            is Int -> column.sumOf { it as Int } / column.size.toDouble()
+            is Int -> column.sumOf { (it as Int).toLong() } / column.size.toDouble()
             is Long -> column.sumOf { it as Long } / column.size.toDouble()
             is Float -> column.sumOf { (it as Float).toDouble() } / column.size
             else -> throw TypeMismatchError(first)
@@ -40,8 +40,7 @@ fun aggregate(
             else -> error(first)
         }
         Aggregator.SUM -> when (val first = column.first()) {
-            is Int -> column.sumOf { it as Int }
-            is Long -> column.sumOf { it as Long }
+            is Int -> column.sumOf { (it as Int).toLong() }
             is Float -> column.sumOf { (it as Float).toDouble() }
             is String -> column.reduce { acc, ele -> acc as String + ele as String }
             else -> error(first)

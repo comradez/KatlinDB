@@ -15,7 +15,7 @@ const val PAGE_NUMBER = 60000 // 缓冲区内总页数
 const val MAX_FILE_NUMBER = 128 // 支持同时打开的文件个数
 const val PAGE_SHIFT = 13 // 页面大小的 log2 值
 const val PAGE_SIZE = 1 shl PAGE_SHIFT // 页面大小
-const val PAGE_HEADER_SIZE = 64 // 每页的页头大小
+const val PAGE_HEADER_SIZE = 256 // 每页的页头大小
 
 /**
  * @brief 把 32 位整数以*小端序*格式写入字节数组的指定位置

@@ -8,6 +8,7 @@ import kotlin.experimental.or
 import pagedFile.BufferManager
 import utils.*
 import java.io.File
+import java.nio.charset.Charset
 
 class FileHandler(_file: File, _bufferManager: BufferManager) {
     val file = _file
@@ -174,6 +175,7 @@ class FileHandler(_file: File, _bufferManager: BufferManager) {
     fun insertRecord(buffer: BufferType): RID {
         val rid = nextAvailableRID()
         val (pageId, slotId) = rid
+        config.recordNumber += 1 // 记录条数 + 1
 //        println("file is ${file.name}, recordLength is ${config.recordLength}, pageId is $pageId, slotId is $slotId")
         markOccupied(rid)
         val page = bufferManager.readPage(file, pageId)
@@ -213,10 +215,12 @@ class FileHandler(_file: File, _bufferManager: BufferManager) {
      * @return 包含该页中所有非空记录 RID 的列表
      */
     private fun getItemRIDsForPage(pageId: Int) = bufferManager
-        .readPage(file, pageId).asSequence()
+        .readPage(file, pageId)
+        .asSequence()
         .take(config.bitMapLength)
         .map { getOnes(it) }
         .flatMapIndexed { i, list -> list.map { it + 8 * i } }
+        .filter { it < config.slotPerPage }
         .map { RID(pageId, it) }
 
     /**
