@@ -126,7 +126,6 @@ class BufferManager(private val fileManager: FileManager) {
         val position = filePageToIndex.getOrDefault(filePagePair, -1)
         if (position != -1) { // 缓存中存在这个页
             pageBuffers[position] = newBuffer
-            markDirty(file, pageId)
         } else { // 否则缓存中不存在这个页
             val index = findReplace.getIndex() // 获取一个新的可用的 index
             if (indexToFilePage[index] != null) { // 写回原来此处的页
@@ -137,6 +136,7 @@ class BufferManager(private val fileManager: FileManager) {
             indexToFilePage[index] = filePagePair
             pageBuffers[index] = newBuffer
         }
+        markDirty(file, pageId)
     }
 
     /**
