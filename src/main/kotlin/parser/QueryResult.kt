@@ -75,7 +75,7 @@ class SuccessResult(val headers: List<String>, val data: List<List<Any?>>, val e
             prettyTable.addRow(*line.map { toOutputForm(it) }.toTypedArray())
         }
         var table = prettyTable.toString()
-        table = table.plus("${this.data.size} Items got.").plus("\n")
+        table = table.plus("${this.data.size} item(s) got.").plus("\n")
         this.extra?.forEach {
             table = table.plus(it).plus("\n")
         }

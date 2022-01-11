@@ -58,7 +58,9 @@ class TableInfo(
         }
         return descriptionMap.values.toList().also {
             if (it.isNotEmpty()) {
-                it[0].extra.add("PRIMARY KEY (".plus(primary.joinToString(", ")).plus(")"))
+                if (primary.isNotEmpty()) {
+                    it[0].extra.add("PRIMARY KEY (".plus(primary.joinToString(", ")).plus(")"))
+                }
                 it[0].extra.addAll(foreign.map { (columnName, foreignInfo) ->
                     "FOREIGN KEY ($columnName) REFERENCES ${foreignInfo.first}(${foreignInfo.second})"
                 })
