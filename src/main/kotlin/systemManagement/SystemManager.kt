@@ -849,6 +849,10 @@ class SystemManager(private val workDir: String) : AutoCloseable {
         }
         // TODO 联合外键
         tableInfo.foreign.forEach { columnName, (foreignTableName, foreignColumnName) ->
+            val columnIndex = tableInfo.getColumnIndex(columnName)
+            if (row[columnIndex] == null) {
+                return@forEach
+            }
             val foreignTableInfo = metaHandler.getTable(foreignTableName)
             val index = this.indexManager.openIndex(
                 metaHandler.dbName,
@@ -856,7 +860,6 @@ class SystemManager(private val workDir: String) : AutoCloseable {
                 foreignColumnName,
                 foreignTableInfo.indices[foreignColumnName]!!
             )
-            val columnIndex = tableInfo.getColumnIndex(columnName)
             index.updateReferenceCount(row[columnIndex] as Int, null, 1)
         }
     }
@@ -879,6 +882,10 @@ class SystemManager(private val workDir: String) : AutoCloseable {
         }
         // TODO 联合外键
         tableInfo.foreign.forEach { columnName, (foreignTableName, foreignColumnName) ->
+            val columnIndex = tableInfo.getColumnIndex(columnName)
+            if (row[columnIndex] == null) {
+                return@forEach
+            }
             val foreignTableInfo = metaHandler.getTable(foreignTableName)
             val index = this.indexManager.openIndex(
                 metaHandler.dbName,
@@ -886,7 +893,6 @@ class SystemManager(private val workDir: String) : AutoCloseable {
                 foreignColumnName,
                 foreignTableInfo.indices[foreignColumnName]!!
             )
-            val columnIndex = tableInfo.getColumnIndex(columnName)
             index.updateReferenceCount(row[columnIndex] as Int, null, -1)
         }
     }

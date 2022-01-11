@@ -34,7 +34,13 @@ class Converter {
                         )
                         AttributeType.STRING -> writeStringToByteArray(value as String? ?: "", record, offset)
                         AttributeType.LONG -> writeLongToByteArray(
-                            if (value != null) { parseDate(value as String) } else { Long.MIN_VALUE },
+                            if (value != null) {
+                                when (value) {
+                                    is String -> parseDate(value)
+                                    is Long -> value
+                                    else -> error(value)
+                                }
+                            } else { Long.MIN_VALUE },
                             record,
                             offset
                         )
