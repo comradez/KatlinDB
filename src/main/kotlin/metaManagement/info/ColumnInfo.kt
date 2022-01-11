@@ -8,7 +8,8 @@ class ColumnInfo(
     val type: AttributeType,
     val name: String,
     val size: Int,
-    var nullable: Boolean = true
+    var nullable: Boolean = true,
+    var referenceCount: Int = 0
 ) {
     fun getColumnSize() : Int {
         return when (type) {
@@ -24,7 +25,7 @@ class ColumnInfo(
         val default: Any = when (type) {
             AttributeType.INT, AttributeType.LONG -> 0
             AttributeType.FLOAT -> 0.0
-            AttributeType.STRING -> ""
+            AttributeType.STRING -> "''"
         }
         return ColumnDescription(name, typePair, nullable, default)
     }

@@ -3,7 +3,7 @@ package dataConverter
 import recordManagement.AttributeType
 import recordManagement.Record
 import utils.*
-import java.lang.ClassCastException
+import utils.ParseDate.Static.parseDate
 import java.sql.Date
 
 class Converter {

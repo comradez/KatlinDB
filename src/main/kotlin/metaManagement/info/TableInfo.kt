@@ -51,6 +51,11 @@ class TableInfo(
             descriptionMap[columnName]?.isNull = false
             requireNotNull(descriptionMap[columnName]?.key)
         }
+        descriptionMap.forEach { (_, description) ->
+            if (description.isNull) {
+                description.default = "NULL"
+            }
+        }
         return descriptionMap.values.toList().also {
             if (it.isNotEmpty()) {
                 it[0].extra.add("PRIMARY KEY (".plus(primary.joinToString(", ")).plus(")"))

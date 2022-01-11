@@ -3,9 +3,8 @@ package systemManagement
 import metaManagement.info.ColumnInfo
 import recordManagement.AttributeType
 import recordManagement.CompareOp
+import utils.ParseDate.Static.parseDate
 import utils.TypeMismatchError
-import utils.parseDate
-import java.sql.Date
 
 interface Predicate {
     fun build(column: Pair<Int, ColumnInfo>): (List<Any?>) -> Boolean
@@ -14,31 +13,36 @@ interface Predicate {
 class CompareWith(val op: CompareOp, val rhs: Any) : Predicate {
     override fun build(column: Pair<Int, ColumnInfo>): (List<Any?>) -> Boolean {
         val (columnIndex, columnInfo) = column
-        val compareToRhs: (List<Any?>) -> Int = when (columnInfo.type) {
+        val compareToRhs: (List<Any?>) -> Int? = when (columnInfo.type) {
             AttributeType.LONG -> when (rhs) {
-                is Int -> { row -> (row[columnIndex] as Long?)?.compareTo(rhs) ?: -1 }
-                is Long -> { row -> (row[columnIndex] as Long?)?.compareTo(rhs) ?: -1 }
-                is Float -> { row -> (row[columnIndex] as Long?)?.compareTo(rhs) ?: -1 }
-                is Double -> { row -> (row[columnIndex] as Long?)?.compareTo(rhs) ?: -1 }
-                is String -> { row -> (row[columnIndex] as Long?)?.compareTo(parseDate(rhs)) ?: -1 }
+                is Int -> { row -> (row[columnIndex] as Long?)?.compareTo(rhs) }
+                is Long -> { row -> (row[columnIndex] as Long?)?.compareTo(rhs) }
+                is Float -> { row -> (row[columnIndex] as Long?)?.compareTo(rhs) }
+                is Double -> { row -> (row[columnIndex] as Long?)?.compareTo(rhs) }
+                is String -> { row -> (row[columnIndex] as Long?)?.compareTo(parseDate(rhs)) }
                 else -> throw TypeMismatchError(rhs)
             }
             AttributeType.INT -> when (rhs) {
-                is Int -> { row -> (row[columnIndex] as Int?)?.compareTo(rhs) ?: -1 }
-                is Long -> { row -> (row[columnIndex] as Int?)?.compareTo(rhs) ?: -1 }
-                is Float -> { row -> (row[columnIndex] as Int?)?.compareTo(rhs) ?: -1 }
-                is Double -> { row -> (row[columnIndex] as Int?)?.compareTo(rhs) ?: -1 }
+                is Int -> { row -> (row[columnIndex] as Int?)?.compareTo(rhs) }
+                is Long -> { row -> (row[columnIndex] as Int?)?.compareTo(rhs) }
+                is Float -> { row -> (row[columnIndex] as Int?)?.compareTo(rhs) }
+                is Double -> { row -> (row[columnIndex] as Int?)?.compareTo(rhs) }
                 else -> throw TypeMismatchError(rhs)
             }
             AttributeType.FLOAT -> when (rhs) {
-                is Int -> { row -> (row[columnIndex] as Float?)?.compareTo(rhs) ?: -1 }
-                is Long -> { row -> (row[columnIndex] as Float?)?.compareTo(rhs) ?: -1 }
-                is Float -> { row -> (row[columnIndex] as Float?)?.compareTo(rhs) ?: -1 }
-                is Double -> { row -> (row[columnIndex] as Float?)?.compareTo(rhs) ?: -1 }
+                is Int -> { row -> (row[columnIndex] as Float?)?.compareTo(rhs) }
+                is Long -> { row -> (row[columnIndex] as Float?)?.compareTo(rhs) }
+                is Float -> { row -> (row[columnIndex] as Float?)?.compareTo(rhs) }
+                is Double -> { row -> (row[columnIndex] as Float?)?.compareTo(rhs) }
                 else -> throw TypeMismatchError(rhs)
             }
             AttributeType.STRING -> when (rhs) {
-                is String -> { row -> (row[columnIndex] as String?)?.compareTo(rhs) ?: -1 }
+                is String -> { row ->
+                    (row[columnIndex] as String?)?.run {
+                        if (this.isEmpty()) null
+                        else this.compareTo(rhs)
+                    }
+                }
                 else -> throw TypeMismatchError(rhs)
             }
         }

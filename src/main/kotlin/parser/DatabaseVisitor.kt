@@ -31,37 +31,37 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val results = mutableListOf<QueryResult>()
         measureTimeCost()
         for (statement in ctx!!.statement()) {
-            when (val result = statement.accept(this)) {
-                is QueryResult -> {
-                    result.timeCost = measureTimeCost()
-                    results.add(result)
-                }
-                is Unit -> {
-                    val emptyResult = EmptyResult()
-                    emptyResult.timeCost = measureTimeCost()
-                    results.add(emptyResult)
-                }
-                else -> throw InternalError("Bad result type")
-            }
-//            try {
-//                when (val result = statement.accept(this)) {
-//                    is QueryResult -> {
-//                        result.timeCost = measureTimeCost()
-//                        results.add(result)
-//                    }
-//                    is Unit -> {
-//                        val emptyResult = EmptyResult()
-//                        emptyResult.timeCost = measureTimeCost()
-//                        results.add(emptyResult)
-//                    }
-//                    else -> throw InternalError("Bad result type")
+//            when (val result = statement.accept(this)) {
+//                is QueryResult -> {
+//                    result.timeCost = measureTimeCost()
+//                    results.add(result)
 //                }
-//            } catch (e: Exception) {
-//                val errorResult = ErrorResult(e.message ?: "Unknown Error")
-//                errorResult.timeCost = measureTimeCost()
-//                results.add(errorResult)
-//                break
+//                is Unit -> {
+//                    val emptyResult = EmptyResult()
+//                    emptyResult.timeCost = measureTimeCost()
+//                    results.add(emptyResult)
+//                }
+//                else -> throw InternalError("Bad result type")
 //            }
+            try {
+                when (val result = statement.accept(this)) {
+                    is QueryResult -> {
+                        result.timeCost = measureTimeCost()
+                        results.add(result)
+                    }
+                    is Unit -> {
+                        val emptyResult = EmptyResult()
+                        emptyResult.timeCost = measureTimeCost()
+                        results.add(emptyResult)
+                    }
+                    else -> throw InternalError("Bad result type")
+                }
+            } catch (e: Exception) {
+                val errorResult = ErrorResult("'${e.message ?: " Unknown Error"}'")
+                errorResult.timeCost = measureTimeCost()
+                results.add(errorResult)
+                break
+            }
         }
         return results
     }
@@ -128,7 +128,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         for ((_columnName, _columnMessage) in foreignKeys) {
             val columnName = _columnName as String
             val columnMessage = (_columnMessage as Pair<*, *>).first as String to _columnMessage.second as String
-            manager.addForeign(tableName, columnName, columnMessage)
+            manager.addForeign(tableName, columnName, columnMessage, false)
         }
         manager.setPrimary(tableName, primaryKey, false)
     }

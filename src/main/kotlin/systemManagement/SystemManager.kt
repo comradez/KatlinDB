@@ -1,6 +1,7 @@
 package systemManagement
 
 import dataConverter.Converter
+import indexManagement.Index
 import indexManagement.IndexManager
 import metaManagement.MetaHandler
 import metaManagement.MetaManager
@@ -16,6 +17,7 @@ import recordManagement.AttributeType
 import recordManagement.CompareOp
 import recordManagement.RecordHandler
 import utils.*
+import utils.ParseDate.Static.checkDate
 import java.io.File
 import java.io.FileWriter
 import java.util.*
@@ -218,7 +220,6 @@ class SystemManager(private val workDir: String) : AutoCloseable {
             .orEmpty()
             .toList()
             .map { it.substringBeforeLast('.', "") }
-            .also { println("table num: ${it.size}") }
 
     fun createTable(info: TableInfo) {
         val metaHandler = this.selectedDatabaseMeta
@@ -249,7 +250,12 @@ class SystemManager(private val workDir: String) : AutoCloseable {
     }
 
     fun dropTable(tableName: String) {
-        val (metaHandler, _) = this.selectTable(tableName)
+        val (metaHandler, tableInfo) = this.selectTable(tableName)
+        tableInfo.columns.forEach { column ->
+            if (column.referenceCount > 0) {
+                throw ConstraintViolationError("Column ${column.name} is referenced by other table(s)")
+            }
+        }
         metaHandler.removeTable(tableName)
         this.recordHandler.removeRecord(metaHandler.dbName, tableName)
     }
@@ -453,17 +459,26 @@ class SystemManager(private val workDir: String) : AutoCloseable {
     ): QueryResult {
         val (metaHandler, tableInfo) = this.selectTable(tableName)
         this.columnNameResolution(conditions.asSequence().map { it.column }, tableInfo)
-        // TODO map 的合法性检查
-        val map = map.map { (columnName, value) -> tableInfo.getColumnIndex(columnName) to value }
+        val map = map.map { (columnName, value) ->
+            if (columnName !in tableInfo.columnMap) {
+                throw ColumnNotExistsError(tableName, columnName)
+            }
+            tableInfo.getColumnIndex(columnName) to value
+        }
         val record = this.recordHandler.openRecord(metaHandler.dbName, tableName)
         val values = this.selectRecords(metaHandler, tableInfo, conditions).toList()
         values.forEach { (rid, oldRow) ->
-            this.checkDeleteConstraints(metaHandler, tableInfo, oldRow)
             val newRow = oldRow.toMutableList()
             map.forEach { (columnIndex, value) ->
                 newRow[columnIndex] = value
             }
-            this.checkInsertConstraints(metaHandler, tableInfo, newRow)
+            val masks = oldRow.asSequence().zip(newRow.asSequence())
+                .withIndex()
+                .filterNot { (_, pair) -> pair.first == pair.second }
+                .map { (index, _) -> index }
+                .toSet()
+            this.checkDeleteConstraints(metaHandler, tableInfo, oldRow, rid, masks)
+            this.checkInsertConstraints(metaHandler, tableInfo, newRow, rid, masks)
             this.deleteIndex(metaHandler, tableInfo, rid, oldRow)
             record.updateRecord(rid, tableInfo.buildRecord(newRow))
             this.insertIndex(metaHandler, tableInfo, rid, newRow)
@@ -477,7 +492,7 @@ class SystemManager(private val workDir: String) : AutoCloseable {
         val record = this.recordHandler.openRecord(metaHandler.dbName, tableName)
         val values = this.selectRecords(metaHandler, tableInfo, conditions).toList()
         values.forEach { (rid, row) ->
-            this.checkDeleteConstraints(metaHandler, tableInfo, row)
+            this.checkDeleteConstraints(metaHandler, tableInfo, row, rid)
             record.deleteRecord(rid)
             this.deleteIndex(metaHandler, tableInfo, rid, row)
         }
@@ -485,11 +500,19 @@ class SystemManager(private val workDir: String) : AutoCloseable {
     }
 
     fun addUnique(tableName: String, columnName: String) {
-        val (metaHandler, tableInfo, _) = this.selectColumn(tableName, columnName)
-        metaHandler.addUnique(tableName, columnName)
-        if (!tableInfo.existIndex(columnName)) {
-            this.createIndex(tableName, columnName)
+        val (metaHandler, tableInfo, columnIndex) = this.selectColumn(tableName, columnName)
+        val record = this.recordHandler.openRecord(metaHandler.dbName, tableName)
+        val column = record.getItemRIDs().map { rid ->
+            val row = tableInfo.parseRecord(record.getRecord(rid))
+            row[columnIndex]
+        }.filterNotNull()
+        val set = mutableSetOf<Any>()
+        column.forEach { key ->
+            if (!set.add(key)) {
+                throw ConstraintViolationError("Duplicated unique key: $key")
+            }
         }
+        metaHandler.addUnique(tableName, columnName)
     }
 
     fun setPrimary(tableName: String, primary: List<String>, checkConstraints: Boolean = true) {
@@ -534,34 +557,96 @@ class SystemManager(private val workDir: String) : AutoCloseable {
             if (columnName !in tableInfo.columnMap) {
                 throw ColumnNotExistsError(tableName, columnName)
             }
-            if (tableInfo.existIndex(columnName)) {
+            metaHandler.setPrimary(tableName, tableInfo.primary.filter { it == columnName })
+            if (tableInfo.columnMap[columnName]!!.referenceCount == 0) {
                 this.dropIndex(tableName, columnName)
             }
-            metaHandler.setPrimary(tableName, tableInfo.primary.filter { it == columnName })
         } else {
-            tableInfo.primary.asSequence()
-                .filter { tableInfo.existIndex(it) }
-                .forEach { this.dropIndex(tableName, it) }
             metaHandler.setPrimary(tableName, listOf())
+            tableInfo.primary.asSequence()
+                .filter { columnName -> tableInfo.columnMap[columnName]!!.referenceCount == 0 }
+                .forEach { this.dropIndex(tableName, it) }
         }
     }
 
-    fun addForeign(tableName: String, columnName: String, foreign: Pair<String, String>) {
-        val (metaHandler, _, _) = this.selectColumn(tableName, columnName)
+    fun addForeign(
+        tableName: String,
+        columnName: String,
+        foreign: Pair<String, String>,
+        checkConstraints: Boolean = true
+    ) {
+        val (metaHandler, tableInfo, columnIndex) = this.selectColumn(tableName, columnName)
         val (foreignTableName, foreignColumnName) = foreign
-        val (_, foreignTableInfo, _) = this.selectColumn(foreignTableName, foreignColumnName)
+        val (_, foreignTableInfo, foreignColumnIndex) = this.selectColumn(
+            foreignTableName,
+            foreignColumnName
+        )
+        if (checkConstraints) {
+            val record = this.recordHandler.openRecord(metaHandler.dbName, tableName)
+            record.getItemRIDs().map { rid ->
+                val row = tableInfo.parseRecord(record.getRecord(rid))
+                row[columnIndex]!!
+            }.forEach { key ->
+                if (this.isDuplicated(
+                        metaHandler,
+                        foreignTableInfo,
+                        listOf(foreignColumnIndex to key)
+                    ) == null
+                ) {
+                    throw ConstraintViolationError("Missing foreign key: $key")
+                }
+            }
+        }
         metaHandler.addForeign(tableName, columnName, foreign)
-        if (!foreignTableInfo.existIndex(foreignColumnName)) {
-            this.createIndex(foreignTableName, foreignColumnName)
+        val index = when (val rootPageId = foreignTableInfo.indices[foreignColumnName]) {
+            null -> this.createIndex(foreignTableName, foreignColumnName)
+            else -> this.indexManager.openIndex(
+                metaHandler.dbName,
+                foreignTableName,
+                foreignColumnName,
+                rootPageId
+            )
+        }
+        val foreignColumnInfo = foreignTableInfo.columnMap[foreignColumnName]!!
+        if (foreignColumnInfo.referenceCount == 0) {
+            index.addReferenceCount()
+        }
+        foreignColumnInfo.referenceCount += 1
+        val record = this.recordHandler.openRecord(metaHandler.dbName, tableName)
+        record.getItemRIDs().map { rid ->
+            val row = tableInfo.parseRecord(record.getRecord(rid))
+            row[columnIndex]!!
+        }.forEach { key -> // TODO 联合外键
+            index.updateReferenceCount(key as Int? ?: Int.MIN_VALUE, null, 1)
         }
     }
 
     fun dropForeign(tableName: String, columnName: String) {
-        val (metaHandler, tableInfo, _) = this.selectColumn(tableName, columnName)
-        if (columnName !in tableInfo.foreign) {
-            throw NotForeignKeyColumnError(tableName, columnName)
-        }
+        val (metaHandler, tableInfo, columnIndex) = this.selectColumn(tableName, columnName)
+        val (foreignTableName, foreignColumnName) = tableInfo.foreign[columnName]
+            ?: throw NotForeignKeyColumnError(tableName, columnName)
         metaHandler.removeForeign(tableName, columnName)
+        val foreignTableInfo = metaHandler.getTable(foreignTableName)
+        val foreignColumnInfo = foreignTableInfo.columnMap[foreignColumnName]!!
+        val index = this.indexManager.openIndex(
+            metaHandler.dbName, tableName, foreignColumnName,
+            foreignTableInfo.indices[foreignColumnName]!!
+        )
+        foreignColumnInfo.referenceCount -= 1
+        if (foreignColumnInfo.referenceCount == 0) {
+            if (foreignColumnName !in foreignTableInfo.primary) {
+                this.dropIndex(foreignTableName, foreignColumnName)
+            } else {
+                index.dropReferenceCount()
+            }
+        } else {
+            val record = this.recordHandler.openRecord(metaHandler.dbName, tableName)
+            val column = record.getItemRIDs().map { rid ->
+                val row = tableInfo.parseRecord(record.getRecord(rid))
+                row[columnIndex]
+            }
+            column.forEach { key -> index.updateReferenceCount(key as Int, null, -1) }
+        }
     }
 
     fun showIndices(): List<String> {
@@ -571,7 +656,7 @@ class SystemManager(private val workDir: String) : AutoCloseable {
         }
     }
 
-    fun createIndex(tableName: String, columnName: String) {
+    fun createIndex(tableName: String, columnName: String): Index {
         val (metaHandler, tableInfo, _) = this.selectColumn(tableName, columnName)
         if (tableInfo.existIndex(columnName)) {
             throw IndexAlreadyExistsError(tableName, columnName)
@@ -587,12 +672,19 @@ class SystemManager(private val workDir: String) : AutoCloseable {
             index.put(key, rid)
         }
         tableInfo.indices[columnName] = index.rootPageId
+        return index
     }
 
     fun dropIndex(tableName: String, columnName: String) {
-        val (metaHandler, tableInfo) = this.selectColumn(tableName, columnName)
+        val (metaHandler, tableInfo, _) = this.selectColumn(tableName, columnName)
         if (!tableInfo.existIndex(columnName)) {
             throw IndexNotExistsError(tableName, columnName)
+        }
+        if (tableInfo.columnMap[columnName]!!.referenceCount > 0) {
+            throw ConstraintViolationError("Column is referenced by other table(s)")
+        }
+        if (columnName in tableInfo.primary) {
+            throw ConstraintViolationError("Column is primary key")
         }
         metaHandler.dropIndex(tableName, columnName)
         tableInfo.dropIndex(columnName)
@@ -603,32 +695,64 @@ class SystemManager(private val workDir: String) : AutoCloseable {
         tableInfo: TableInfo,
         keys: List<Pair<Int, Any>>,
         self: RID? = null
-    ): Boolean {
+    ): RID? {
         val conditions = keys.map { (columnIndex, key) ->
             val column = UnqualifiedColumn(tableInfo.name, tableInfo.columns[columnIndex].name)
             val predicate = CompareWith(CompareOp.EQ_OP, key)
             PredicateCondition(column, predicate)
         }
-        val result = this.selectRecords(metaHandler, tableInfo, conditions)
-        return if (self == null) {
-            result.iterator().hasNext()
-        } else {
-            result.any { (rid, _) -> rid == self }
-        }
+        val result = this.selectRecords(metaHandler, tableInfo, conditions).map { (rid, _) -> rid }
+        return result.firstOrNull { it != self }
     }
 
     private fun checkInsertConstraints(
         metaHandler: MetaHandler,
         tableInfo: TableInfo,
-        row: List<Any?>
+        row: List<Any?>,
+        rid: RID? = null,
+        masks: Set<Int>? = null
     ) {
+        if (row.size != tableInfo.columns.size) {
+            throw ConstraintViolationError("Value list size ${row.size} mismatched with column size ${tableInfo.columns.size}")
+        }
+        row.zip(tableInfo.columns).forEachIndexed { i, (column, columnInfo) ->
+            if (masks != null && i !in masks) {
+                return@forEachIndexed
+            }
+            when (column) {
+                null -> if (
+                    !columnInfo.nullable ||
+                    columnInfo.referenceCount > 0 ||
+                    columnInfo.name in tableInfo.primary
+                ) {
+                    throw ConstraintViolationError("Column ${columnInfo.name} is not nullable")
+                }
+                is Int -> when (columnInfo.type) {
+                    AttributeType.INT, AttributeType.FLOAT -> {}
+                    else -> throw TypeMismatchError(column)
+                }
+                is Float -> if (columnInfo.type != AttributeType.FLOAT) {
+                    throw TypeMismatchError(column)
+                }
+                is Long -> if (columnInfo.type != AttributeType.LONG) {
+                    throw TypeMismatchError(column)
+                }
+                is String -> if (!(
+                    columnInfo.type == AttributeType.STRING ||
+                    (columnInfo.type == AttributeType.LONG && checkDate(column))
+                )) {
+                    throw TypeMismatchError(column)
+                }
+                else -> throw TypeMismatchError(column)
+            }
+        }
         // primary key
         if (tableInfo.primary.isNotEmpty()) {
             val keys = tableInfo.primary.map { columnName ->
                 val columnIndex = tableInfo.getColumnIndex(columnName)
                 columnIndex to row[columnIndex]!!
             }
-            if (this.isDuplicated(metaHandler, tableInfo, keys)) {
+            if (this.isDuplicated(metaHandler, tableInfo, keys, rid) != null) {
                 throw ConstraintViolationError(
                     "Duplicated primary key(s): ${
                         trimListToPrint(
@@ -641,16 +765,23 @@ class SystemManager(private val workDir: String) : AutoCloseable {
         }
         // unique
         tableInfo.unique.forEach { columnName ->
+            if (masks != null && tableInfo.getColumnIndex(columnName) !in masks) {
+                return@forEach
+            }
             val columnIndex = tableInfo.getColumnIndex(columnName)
-            val value = row[columnIndex]!!
+            val value = row[columnIndex] ?: return@forEach
             val keys = listOf(columnIndex to value)
-            if (this.isDuplicated(metaHandler, tableInfo, keys)) {
+            if (this.isDuplicated(metaHandler, tableInfo, keys) != null) {
                 throw ConstraintViolationError("Duplicated unique key: `${value}`")
             }
         }
         // foreign key
+        // TODO 联合外键
         tableInfo.foreign.forEach { columnName, (foreignTableName, foreignColumnName) ->
             val columnIndex = tableInfo.getColumnIndex(columnName)
+            if (masks != null && columnIndex !in masks) {
+                return@forEach
+            }
             val value = row[columnIndex]!!
             val foreignTableInfo = metaHandler.getTable(foreignTableName)
             val rootPageId = foreignTableInfo.indices[foreignColumnName]!!
@@ -669,9 +800,34 @@ class SystemManager(private val workDir: String) : AutoCloseable {
     private fun checkDeleteConstraints(
         metaHandler: MetaHandler,
         tableInfo: TableInfo,
-        row: List<Any?>
+        row: List<Any?>,
+        rid: RID,
+        masks: Set<Int>? = null
     ) {
-        // TODO foreign key
+        tableInfo.columns.forEachIndexed { columnIndex, columnInfo ->
+            if (masks != null && columnIndex !in masks) {
+                return@forEachIndexed
+            }
+            if (columnInfo.referenceCount == 0) {
+                return@forEachIndexed
+            }
+            val index = this.indexManager.openIndex(
+                metaHandler.dbName,
+                tableInfo.name,
+                columnInfo.name,
+                tableInfo.indices[columnInfo.name]!!
+            )
+            if (index.getReferenceCount(row[columnIndex] as Int, rid) > 0) {
+                throw ConstraintViolationError(
+                    "Row ${
+                        trimListToPrint(
+                            row,
+                            3
+                        )
+                    } is referenced by other table(s)"
+                )
+            }
+        }
     }
 
     private fun insertIndex(
@@ -691,6 +847,18 @@ class SystemManager(private val workDir: String) : AutoCloseable {
             index.put(row[columnIndex] as Int? ?: Int.MIN_VALUE, rid)
             index.rootPageId
         }
+        // TODO 联合外键
+        tableInfo.foreign.forEach { columnName, (foreignTableName, foreignColumnName) ->
+            val foreignTableInfo = metaHandler.getTable(foreignTableName)
+            val index = this.indexManager.openIndex(
+                metaHandler.dbName,
+                foreignTableName,
+                foreignColumnName,
+                foreignTableInfo.indices[foreignColumnName]!!
+            )
+            val columnIndex = tableInfo.getColumnIndex(columnName)
+            index.updateReferenceCount(row[columnIndex] as Int, null, 1)
+        }
     }
 
     private fun deleteIndex(
@@ -708,6 +876,18 @@ class SystemManager(private val workDir: String) : AutoCloseable {
             )
             val columnIndex = tableInfo.getColumnIndex(columnName)
             index.remove(row[columnIndex] as Int? ?: Int.MIN_VALUE, rid)
+        }
+        // TODO 联合外键
+        tableInfo.foreign.forEach { columnName, (foreignTableName, foreignColumnName) ->
+            val foreignTableInfo = metaHandler.getTable(foreignTableName)
+            val index = this.indexManager.openIndex(
+                metaHandler.dbName,
+                foreignTableName,
+                foreignColumnName,
+                foreignTableInfo.indices[foreignColumnName]!!
+            )
+            val columnIndex = tableInfo.getColumnIndex(columnName)
+            index.updateReferenceCount(row[columnIndex] as Int, null, -1)
         }
     }
 
@@ -777,7 +957,6 @@ class SystemManager(private val workDir: String) : AutoCloseable {
                 tableInfo.indices[columnName]!!
             )
             val (l, r) = boundary
-            println("$l .. $r")
             index.get(l, r).toSet()
         }.reduceOrNull(Set<RID>::intersect)?.asSequence() ?: run {
             val record = this.recordHandler.openRecord(metaHandler.dbName, tableInfo.name)
@@ -791,8 +970,6 @@ class SystemManager(private val workDir: String) : AutoCloseable {
         conditions: List<PredicateCondition>
     ): Sequence<Pair<RID, List<Any?>>> {
         val record = this.recordHandler.openRecord(metaHandler.dbName, tableInfo.name)
-        val test = selectIndices(metaHandler, tableInfo, conditions).toList()
-        println("size .. ${test.size}")
         val values = this.selectIndices(metaHandler, tableInfo, conditions)
             .map { rid -> rid to tableInfo.parseRecord(record.getRecord(rid)) }
         val predicates = conditions.map { condition ->

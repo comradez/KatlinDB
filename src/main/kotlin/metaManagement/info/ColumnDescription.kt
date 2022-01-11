@@ -6,7 +6,7 @@ data class ColumnDescription(
     val name: String,
     val type: Pair<AttributeType, Int?>, // 类型，长度（长度是用于 String 的）
     var isNull: Boolean,
-    val default: Any
+    var default: Any
 ) {
     var key: String? = null
     var extra: MutableList<String> = mutableListOf()
