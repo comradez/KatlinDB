@@ -1,6 +1,7 @@
 package parser
 
 import org.sk.PrettyTable
+import utils.ColumnNotExistsError
 import utils.IllFormSelectError
 import utils.trimListToPrint
 import java.sql.Date
@@ -28,8 +29,12 @@ class SuccessResult(val headers: List<String>, val data: List<List<Any?>>, val e
     }
     private val aliasMap = mutableMapOf<String, String>() // alias => header
 
-    fun getHeaderIndex(header: String): Int =
-        this.headerIndices[this.aliasMap.getOrDefault(header, header)]!!
+    fun getHeaderIndex(header: String): Int {
+        return this.headerIndices[this.aliasMap.getOrDefault(header, header)] ?: kotlin.run {
+            val list = header.split(".")
+            throw ColumnNotExistsError(list[0], list[1])
+        }
+    }
 
     fun setAlias(alias: String, header: String) {
         this.aliasMap[alias] = header
@@ -66,7 +71,6 @@ class SuccessResult(val headers: List<String>, val data: List<List<Any?>>, val e
 
     fun outputTable(): String {
         val prettyTable = PrettyTable(*this.headers.toTypedArray())
-        val extraMessage = this.data[0]
         for (line in this.data) {
             prettyTable.addRow(*line.map { toOutputForm(it) }.toTypedArray())
         }

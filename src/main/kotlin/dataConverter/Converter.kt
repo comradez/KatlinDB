@@ -3,6 +3,7 @@ package dataConverter
 import recordManagement.AttributeType
 import recordManagement.Record
 import utils.*
+import java.lang.ClassCastException
 import java.sql.Date
 
 class Converter {
@@ -22,21 +23,25 @@ class Converter {
                 val size = triple.first.first
                 val type = triple.first.second
                 val value = triple.second
-                when (type) {
-                    AttributeType.INT -> writeIntToByteArray(value as Int? ?: Int.MIN_VALUE, record, offset)
-                    AttributeType.FLOAT -> writeFloatToByteArray(
-                        when (value) {
-                            is Int -> value.toFloat()
-                            else -> value as Float? ?: Float.NaN
-                        }, record, offset
-                    )
-                    AttributeType.STRING -> writeStringToByteArray(value as String? ?: "", record, offset)
-                    AttributeType.LONG -> writeLongToByteArray(
-                        if (value != null) { Date.valueOf(value as String).time } else { Long.MIN_VALUE },
-                        record,
-                        offset
-                    )
-                }
+//                try {
+                    when (type) {
+                        AttributeType.INT -> writeIntToByteArray(value as Int? ?: Int.MIN_VALUE, record, offset)
+                        AttributeType.FLOAT -> writeFloatToByteArray(
+                            when (value) {
+                                is Int -> value.toFloat()
+                                else -> value as Float? ?: Float.NaN
+                            }, record, offset
+                        )
+                        AttributeType.STRING -> writeStringToByteArray(value as String? ?: "", record, offset)
+                        AttributeType.LONG -> writeLongToByteArray(
+                            if (value != null) { parseDate(value as String) } else { Long.MIN_VALUE },
+                            record,
+                            offset
+                        )
+                    }
+//                } catch (e: ClassCastException) {
+//                    throw TypeMismatchError(value)
+//                }
                 offset += size
             }
             assert(offset == totalSize)
@@ -67,7 +72,7 @@ class Converter {
                 AttributeType.INT -> input.toInt()
                 AttributeType.FLOAT -> input.toFloat()
                 AttributeType.STRING -> input
-                AttributeType.LONG -> Date.valueOf(input).time
+                AttributeType.LONG -> parseDate(input)
             }
         }
 

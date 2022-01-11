@@ -4,6 +4,7 @@ import java.lang.Float.floatToIntBits
 import java.lang.Float.intBitsToFloat
 import java.lang.Integer.min
 import java.nio.charset.Charset
+import java.sql.Date
 import kotlin.experimental.and
 
 typealias BufferType = ByteArray
@@ -212,3 +213,18 @@ fun <T> cartesianProduct(vararg sets: List<T>): List<List<T>> =
     sets.fold(listOf(emptyList())) { acc, set ->
         acc.flatMap { list -> set.map { element -> list + element } }
     }
+
+fun parseDate(date: String): Long {
+    val yyyymmdd = "\\d{4}-\\d{1,2}-\\d{1,2}".toRegex()
+    val yyyymm = "\\d{4}-\\d{1,2}".toRegex()
+    val yyyy = "\\d{4}".toRegex()
+    return if (yyyymmdd.matches(date)) {
+        Date.valueOf(date).time
+    } else if (yyyymm.matches(date)) {
+        Date.valueOf(date.plus("-01")).time
+    } else if (yyyy.matches(date)) {
+        Date.valueOf(date.plus("-01-01")).time
+    } else {
+        error("Invalid date format.")
+    }
+}

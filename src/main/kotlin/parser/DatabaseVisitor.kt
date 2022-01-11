@@ -31,37 +31,37 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val results = mutableListOf<QueryResult>()
         measureTimeCost()
         for (statement in ctx!!.statement()) {
-//            when (val result = statement.accept(this)) {
-//                is QueryResult -> {
-//                    result.timeCost = measureTimeCost()
-//                    results.add(result)
-//                }
-//                is Unit -> {
-//                    val emptyResult = EmptyResult()
-//                    emptyResult.timeCost = measureTimeCost()
-//                    results.add(emptyResult)
-//                }
-//                else -> throw InternalError("Bad result type")
-//            }
-            try {
-                when (val result = statement.accept(this)) {
-                    is QueryResult -> {
-                        result.timeCost = measureTimeCost()
-                        results.add(result)
-                    }
-                    is Unit -> {
-                        val emptyResult = EmptyResult()
-                        emptyResult.timeCost = measureTimeCost()
-                        results.add(emptyResult)
-                    }
-                    else -> throw InternalError("Bad result type")
+            when (val result = statement.accept(this)) {
+                is QueryResult -> {
+                    result.timeCost = measureTimeCost()
+                    results.add(result)
                 }
-            } catch (e: Exception) {
-                val errorResult = ErrorResult(e.message ?: "Unknown Error")
-                errorResult.timeCost = measureTimeCost()
-                results.add(errorResult)
-                break
+                is Unit -> {
+                    val emptyResult = EmptyResult()
+                    emptyResult.timeCost = measureTimeCost()
+                    results.add(emptyResult)
+                }
+                else -> throw InternalError("Bad result type")
             }
+//            try {
+//                when (val result = statement.accept(this)) {
+//                    is QueryResult -> {
+//                        result.timeCost = measureTimeCost()
+//                        results.add(result)
+//                    }
+//                    is Unit -> {
+//                        val emptyResult = EmptyResult()
+//                        emptyResult.timeCost = measureTimeCost()
+//                        results.add(emptyResult)
+//                    }
+//                    else -> throw InternalError("Bad result type")
+//                }
+//            } catch (e: Exception) {
+//                val errorResult = ErrorResult(e.message ?: "Unknown Error")
+//                errorResult.timeCost = measureTimeCost()
+//                results.add(errorResult)
+//                break
+//            }
         }
         return results
     }

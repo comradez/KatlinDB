@@ -153,6 +153,7 @@ class RecordHandler(
     }
 
     override fun close() {
-        this.databases.forEach { (database, _) -> this.closeDatabase(database) }
+        val databaseNames = databases.keys.toList()
+        databaseNames.forEach { database -> this.closeDatabase(database) }
     }
 }

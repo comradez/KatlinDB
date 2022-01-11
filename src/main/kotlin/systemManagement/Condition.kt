@@ -4,6 +4,8 @@ import metaManagement.info.ColumnInfo
 import recordManagement.AttributeType
 import recordManagement.CompareOp
 import utils.TypeMismatchError
+import utils.parseDate
+import java.sql.Date
 
 interface Predicate {
     fun build(column: Pair<Int, ColumnInfo>): (List<Any?>) -> Boolean
@@ -18,6 +20,7 @@ class CompareWith(val op: CompareOp, val rhs: Any) : Predicate {
                 is Long -> { row -> (row[columnIndex] as Long?)?.compareTo(rhs) ?: -1 }
                 is Float -> { row -> (row[columnIndex] as Long?)?.compareTo(rhs) ?: -1 }
                 is Double -> { row -> (row[columnIndex] as Long?)?.compareTo(rhs) ?: -1 }
+                is String -> { row -> (row[columnIndex] as Long?)?.compareTo(parseDate(rhs)) ?: -1 }
                 else -> throw TypeMismatchError(rhs)
             }
             AttributeType.INT -> when (rhs) {
