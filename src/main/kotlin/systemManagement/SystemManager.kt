@@ -232,7 +232,11 @@ class SystemManager(private val workDir: String) : AutoCloseable {
     fun describeTable(tableName: String): QueryResult {
         val (_, tableInfo) = this.selectTable(tableName)
         val info = tableInfo.describe()
-        return SuccessResult(ColumnDescription.keys, info.map { it.values }, info.getOrNull(0)?.extra)
+        return SuccessResult(
+            ColumnDescription.keys,
+            info.map { it.values },
+            info.getOrNull(0)?.extra
+        )
     }
 
     fun renameTable(oldName: String, newName: String) {
@@ -350,6 +354,7 @@ class SystemManager(private val workDir: String) : AutoCloseable {
         }
         // just a trick
         if (selectors.singleOrNull() is WildcardCountSelector &&
+            conditions.isEmpty() &&
             groupBy == null &&
             tableNames.size == 1
         ) {
@@ -487,10 +492,35 @@ class SystemManager(private val workDir: String) : AutoCloseable {
         }
     }
 
-    fun setPrimary(tableName: String, primary: List<String>) {
+    fun setPrimary(tableName: String, primary: List<String>, checkConstraints: Boolean = true) {
         val (metaHandler, tableInfo) = this.selectTable(tableName)
+        if (tableInfo.primary.isNotEmpty()) {
+            throw ConstraintViolationError(
+                "Table `${tableName}` already has primary key ${
+                    trimListToPrint(tableInfo.primary, 3)
+                }"
+            )
+        }
         primary.firstOrNull { it !in tableInfo.columnMap }?.let {
             throw ColumnNotExistsError(tableName, it)
+        }
+        if (checkConstraints) {
+            val columnIndices = primary.map { columnName -> tableInfo.getColumnIndex(columnName) }
+            val record = this.recordHandler.openRecord(metaHandler.dbName, tableName)
+            val rows = record.getItemRIDs().map { rid ->
+                val row = tableInfo.parseRecord(record.getRecord(rid))
+                columnIndices.map { row[it] }
+            }
+            val set = mutableSetOf<List<Any?>>()
+            rows.forEach { row ->
+                if (!set.add(row)) {
+                    throw ConstraintViolationError(
+                        "Duplicated primary key(s): ${
+                            trimListToPrint(row, 3)
+                        }"
+                    )
+                }
+            }
         }
         metaHandler.setPrimary(tableName, primary)
         primary.asSequence()
@@ -498,12 +528,22 @@ class SystemManager(private val workDir: String) : AutoCloseable {
             .forEach { this.createIndex(tableName, it) }
     }
 
-    fun dropPrimary(tableName: String) {
+    fun dropPrimary(tableName: String, columnName: String?) {
         val (metaHandler, tableInfo) = this.selectTable(tableName)
-        metaHandler.setPrimary(tableName, listOf())
-        tableInfo.primary.asSequence()
-            .filter { tableInfo.existIndex(it) }
-            .forEach { this.dropIndex(tableName, it) }
+        if (columnName != null) {
+            if (columnName !in tableInfo.columnMap) {
+                throw ColumnNotExistsError(tableName, columnName)
+            }
+            if (tableInfo.existIndex(columnName)) {
+                this.dropIndex(tableName, columnName)
+            }
+            metaHandler.setPrimary(tableName, tableInfo.primary.filter { it == columnName })
+        } else {
+            tableInfo.primary.asSequence()
+                .filter { tableInfo.existIndex(it) }
+                .forEach { this.dropIndex(tableName, it) }
+            metaHandler.setPrimary(tableName, listOf())
+        }
     }
 
     fun addForeign(tableName: String, columnName: String, foreign: Pair<String, String>) {

@@ -130,7 +130,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
             val columnMessage = (_columnMessage as Pair<*, *>).first as String to _columnMessage.second as String
             manager.addForeign(tableName, columnName, columnMessage)
         }
-        manager.setPrimary(tableName, primaryKey)
+        manager.setPrimary(tableName, primaryKey, false)
     }
 
     override fun visitDrop_table(ctx: SQLParser.Drop_tableContext?) {
@@ -220,7 +220,7 @@ class DatabaseVisitor(private val manager: SystemManager) : SQLBaseVisitor<Any>(
         val tableName = ctx!!.Identifier(0).toString()
         val primaryKeyColumnName = ctx.Identifier(1)?.toString()
         // 明明一张表只有一列是主键为什么还要显式把键名写出来
-        manager.dropPrimary(tableName)
+        manager.dropPrimary(tableName, primaryKeyColumnName)
     }
 
     override fun visitAlter_table_drop_foreign_key(ctx: SQLParser.Alter_table_drop_foreign_keyContext?) {

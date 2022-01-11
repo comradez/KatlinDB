@@ -18,7 +18,8 @@ class IndexManager(
     private val databases = mutableMapOf<String, Database>()
 
     override fun close() {
-        this.databases.forEach { (database, _) -> this.closeDatabase(database) }
+        val databases = this.databases.keys.toList()
+        databases.forEach { database -> this.closeDatabase(database) }
     }
 
     fun createIndex(databaseName: String, tableName: String, columnName: String): Index {

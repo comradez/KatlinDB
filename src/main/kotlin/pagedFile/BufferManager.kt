@@ -23,10 +23,8 @@ class BufferManager(private val fileManager: FileManager) : AutoCloseable {
     // 记录一个文件的哪些页在缓存中
 
     override fun close() {
-        this.fileCachePages.forEach { (file, pages) ->
-            pages.forEach { this.writeBack(it) }
-            this.fileManager.closeFile(file)
-        }
+        val files = this.fileCachePages.keys.toList()
+        files.forEach { this.closeFile(it) }
     }
 
     /**
