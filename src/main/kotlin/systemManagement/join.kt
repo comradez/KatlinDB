@@ -16,7 +16,7 @@ fun nestedLoopJoin(
     var innerResult = _innerResult
     var outerJoinedColumns = _outerJoinedColumns
     var innerJoinedColumns = _innerJoinedColumns
-    if (outerResult.rowSize < innerResult.rowSize) {
+    if (outerResult.rowSize > innerResult.rowSize) {
         val (outerResult_, innerResult_) = Pair(innerResult, outerResult)
         outerResult = outerResult_; innerResult = innerResult_
         val (outerJoinedColumns_, innerJoinedColumns_) = Pair(
