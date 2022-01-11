@@ -1001,7 +1001,21 @@ class SystemManager(private val workDir: String) : AutoCloseable {
             joinPairs.getOrPut(tablePair) { mutableListOf() }.add(columnPair)
         }
         val tables = UnionFindSet(results.keys)
-        joinPairs.entries.forEach { (tablePair, columnPairs) ->
+        val cost: (Pair<String, String>) -> Int = { (outer, inner) ->
+            results[tables.find(outer)]!!.rowSize * results[tables.find(inner)]!!.rowSize
+        }
+        while (joinPairs.isNotEmpty()) {
+            var pair = joinPairs.keys.first()
+            var cost = cost(pair)
+            for (p in joinPairs.keys.drop(1)) {
+                val c = cost(p)
+                if (c < cost) {
+                    pair = p
+                    cost = c
+                }
+            }
+            val tablePair = pair
+            val columnPairs = joinPairs.remove(pair)!!
             val (outerTableName, innerTableName) = tablePair
             val outerResult = results[tables.find(outerTableName)]!!
             val innerResult = results[tables.find(innerTableName)]!!
