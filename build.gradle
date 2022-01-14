@@ -1,11 +1,16 @@
 plugins {
     id 'org.jetbrains.kotlin.jvm' version '1.5.31'
     id 'org.jetbrains.kotlin.plugin.serialization' version '1.5.31'
+    id 'application'
 }
 
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8
     targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+application{
+    mainClassName("MainKt")
 }
 
 group 'org.example'
